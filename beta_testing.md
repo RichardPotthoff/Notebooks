@@ -2,9 +2,9 @@
 jupyter:
   jupytext:
     text_representation:
-      extension: .Rmd
-      format_name: rmarkdown
-      format_version: '1.2'
+      extension: .md
+      format_name: markdown
+      format_version: '1.3'
       jupytext_version: 1.17.0
   kernelspec:
     display_name: Python 3 (ipykernel)
@@ -26,13 +26,13 @@ jupyter:
 ## Tests for global "window" instance
 <!-- #endregion -->
 
-```{js jupyter={'outputs_hidden': False, 'source_hidden': False}, pythonista={'disabled': False}}
+```js jupyter={"outputs_hidden": false, "source_hidden": false} pythonista={"disabled": false}
 //alert(document.body)
 window.test={result:true}
 //alert("test.result= "+test.result)
 ```
 
-```{js jupyter={'outputs_hidden': False, 'source_hidden': False}, pythonista={'disabled': False}}
+```js jupyter={"outputs_hidden": false, "source_hidden": false} pythonista={"disabled": false}
 alert("test.result= "+test.result)
 ```
 
@@ -49,7 +49,7 @@ alert("test.result= "+test.result)
 ## Test for "IPython", "Jupyter" in JavaScript
 <!-- #endregion -->
 
-```{js jupyter={'outputs_hidden': False, 'source_hidden': False}, pythonista={'disabled': False}}
+```js jupyter={"outputs_hidden": false, "source_hidden": false} pythonista={"disabled": false}
 alert(IPython)
 ```
 
@@ -63,7 +63,7 @@ alert(IPython)
 | Google Colab | *no output* |
 <!-- #endregion -->
 
-```{js jupyter={'outputs_hidden': False, 'source_hidden': False}, pythonista={'disabled': False}}
+```js jupyter={"outputs_hidden": false, "source_hidden": false} pythonista={"disabled": false}
 alert(Jupyter)
 ```
 
@@ -81,7 +81,7 @@ alert(Jupyter)
 ## Test for "element" in Javascript
 <!-- #endregion -->
 
-```{js jupyter={'outputs_hidden': False, 'source_hidden': False}, pythonista={'disabled': False}}
+```js jupyter={"outputs_hidden": false, "source_hidden": false} pythonista={"disabled": false}
 alert(element)
 ```
 
@@ -99,7 +99,7 @@ alert(element)
 ## Console output tests
 <!-- #endregion -->
 
-```{js jupyter={'outputs_hidden': False, 'source_hidden': False}, pythonista={'disabled': False}}
+```js jupyter={"outputs_hidden": false, "source_hidden": false} pythonista={"disabled": false}
 console.log("My custom message");
 ```
 
@@ -117,7 +117,7 @@ console.log("My custom message");
 ## Console hook tests
 <!-- #endregion -->
 
-```{js jupyter={'outputs_hidden': False, 'source_hidden': False}, pythonista={'disabled': False}}
+```js jupyter={"outputs_hidden": false, "source_hidden": false} pythonista={"disabled": false}
 try{console._o=console._o||{log:console.log,error:console.error,warn:console.warn,info:console.info};[['log'],['error','red'],['warn'],['info']].forEach(([t,c="black"])=>{console[t]=console._o[t];let d=element.consoleOutput;if(!d){d=document.createElement("div");d.id="console-output";d.style.cssText="white-space:pre-wrap;font-family:monospace;padding:0px;background:#f0f0f0;line-height:1.1;";element.appendChild(d);element.consoleOutput=d;}let o=console[t],n=o;while(n&&n.toString().indexOf("[native code]")<0)n=n.apply?function(...a){return n.apply(this,a);}:null;o=function(...a){(n||console._o[t]).apply(console,a);let s=a.map(e=>typeof e==='object'?JSON.stringify(e,null,2):e).join(' ');const m=document.createElement("div");m.innerHTML=`[${t.toUpperCase()}] ${s}`;m.style.cssText=`margin:0;line-height:1.1;padding:0px 0;color:${c};`;d.appendChild(m);};console[t]=o;});
 
 console.log("My custom message");
@@ -140,7 +140,7 @@ console.log("My custom message");
 
 ### ipywidgets
 
-```{python}
+```python
 import ipywidgets as widgets
 from IPython.display import display, Javascript
 
@@ -166,7 +166,7 @@ alert("Python data: " + data);
 | Google Colab |  |
 <!-- #endregion -->
 
-```{js}
+```js
 var data = document.getElementById('python-data').innerText;
 alert("Python data: " + data);
 ```
@@ -185,7 +185,7 @@ alert("Python data: " + data);
 ## Print pdf
 <!-- #endregion -->
 
-```{python jupyter={'source_hidden': True}, pythonista={'disabled': False}}
+```python jupyter={"source_hidden": true} pythonista={"disabled": false}
 #dodecahedron pattern 
 from math import tan,sin
 import numpy as np
@@ -261,7 +261,7 @@ plt.show()
 ## Expanded console hook function
 <!-- #endregion -->
 
-```{js jupyter={'source_hidden': True}, pythonista={'disabled': False}}
+```js jupyter={"source_hidden": true} pythonista={"disabled": false}
 try {
     // Store original system console methods
     console._o = console._o || {
@@ -325,7 +325,7 @@ try {
 
 ## wrapper fumction to capture console output fron JavaScript code
 
-```{python}
+```python
 def capture_console(code):
     return (
 """
@@ -340,7 +340,7 @@ code +
 
 ##  wrappers around ipywidget.Text input widgets for sending data from js to Python
 
-```{python}
+```python
 import ipywidgets as widgets
 from ipywidgets import Output
 from IPython.display import display, Javascript, clear_output
@@ -386,7 +386,7 @@ def on_name_change(change):
 name.observe(on_name_change, names='value')
 ```
 
-```{python}
+```python
 # Query the DOM
 def query_dom():
     js_code = """
@@ -410,7 +410,7 @@ def query_dom():
 query_dom()
 ```
 
-```{javascript}
+```javascript
 try{console._o=console._o||{log:console.log,error:console.error,warn:console.warn,info:console.info};[['log'],['error','red'],['warn'],['info']].forEach(([t,c="black"])=>{console[t]=console._o[t];let d=element.consoleOutput;if(!d){d=document.createElement("div");d.id="console-output";d.style.cssText="white-space:pre-wrap;font-family:monospace;padding:0px;background:#f0f0f0;line-height:1.1;";element.appendChild(d);element.consoleOutput=d;}let o=console[t],n=o;while(n&&n.toString().indexOf("[native code]")<0)n=n.apply?function(...a){return n.apply(this,a);}:null;o=function(...a){(n||console._o[t]).apply(console,a);let s=a.map(e=>typeof e==='object'?JSON.stringify(e,null,2):e).join(' ');const m=document.createElement("div");m.innerHTML=`[${t.toUpperCase()}] ${s}`;m.style.cssText=`margin:0;line-height:1.1;padding:0px 0;color:${c};`;d.appendChild(m);};console[t]=o;});
 
 // Wrapper function to send data to a widget's input element
@@ -456,7 +456,7 @@ window.getData = getData;
 }catch(e){console.error("Error:",e);}finally{[['log'],['error','red'],['warn'],['info']].forEach(([t])=>console._o&&console._o[t]&&(console[t]=console._o[t]));}
 ```
 
-```{javascript}
+```javascript
 try{console._o=console._o||{log:console.log,error:console.error,warn:console.warn,info:console.info};[['log'],['error','red'],['warn'],['info']].forEach(([t,c="black"])=>{console[t]=console._o[t];let d=element.consoleOutput;if(!d){d=document.createElement("div");d.id="console-output";d.style.cssText="white-space:pre-wrap;font-family:monospace;padding:0px;background:#f0f0f0;line-height:1.1;";element.appendChild(d);element.consoleOutput=d;}let o=console[t],n=o;while(n&&n.toString().indexOf("[native code]")<0)n=n.apply?function(...a){return n.apply(this,a);}:null;o=function(...a){(n||console._o[t]).apply(console,a);let s=a.map(e=>typeof e==='object'?JSON.stringify(e,null,2):e).join(' ');const m=document.createElement("div");m.innerHTML=`[${t.toUpperCase()}] ${s}`;m.style.cssText=`margin:0;line-height:1.1;padding:0px 0;color:${c};`;d.appendChild(m);};console[t]=o;});
 
 sendData('python_name', { first: 'John', last: 'Doe' });
@@ -467,7 +467,7 @@ console.log("EmailValue:",emailValue);
 }catch(e){console.error("Error:",e);}finally{[['log'],['error','red'],['warn'],['info']].forEach(([t])=>console._o&&console._o[t]&&(console[t]=console._o[t]));}
 ```
 
-```{python}
+```python
 print(name.value)   # Should print '{"first":"John","last":"Doe"}'
 print(email.value)  # Should print 'Second'
 
@@ -477,7 +477,7 @@ query_dom()
 
 ### find output div in DOM
 
-```{python}
+```python
 import uuid
 from IPython.display import display, Javascript, HTML
 
@@ -559,14 +559,14 @@ display(Javascript(wrapped_code))
 | Google Colab |  |
 <!-- #endregion -->
 
-```{python}
+```python
 from ipykernel.comm import comm
 ```
 
-```{python}
+```python
 
 ```
 
-```{python}
+```python
 
 ```
