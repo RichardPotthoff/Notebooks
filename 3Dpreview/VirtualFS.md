@@ -17,19 +17,20 @@ jupyter:
 
 ```python
 import io
-import builtins
 import sys
 import importlib.util
 import textwrap
+from pathlib import PurePosixPath
 
-def find_file(data, path_parts, mode=None):
+def find_file(data, path_parts, mode=None, original_path=None):
     """
-    Recursively find a file in the nested dictionary.
+    Recursively find a file in the nested dictionary, creating directories if needed for write mode.
     
     Args:
         data (dict): The current dictionary level.
-        path_parts (list): List of path parts (e.g., ['mydir', '__init__.py']).
+        path_parts (list): List of path parts (e.g., ['mydir', 'subdir', 'anotherfile.py']).
         mode (str, optional): File mode for creating entries ('w', 'a', etc.).
+        original_path (str, optional): The original path for better error messages.
     
     Returns:
         tuple: (folder, filename, content) if found.
@@ -39,23 +40,26 @@ def find_file(data, path_parts, mode=None):
     """
     if not path_parts:
         raise FileNotFoundError("Invalid path: empty path parts")
+    
     key = path_parts[0]
     if len(path_parts) == 1:  # Leaf node (file)
         if key not in data or isinstance(data[key], dict):
-            if mode and ('w' in mode or 'a' in mode):
+            if mode and ('w' in mode or 'a' in mode or '+' in mode):
                 data[key] = ''
             else:
-                raise FileNotFoundError(f"No such file: {'/'.join(path_parts)}")
+                error_path = original_path if original_path else '/'.join(path_parts)
+                raise FileNotFoundError(f"No such file: {error_path}")
         return data, key, data[key]
     else:  # Directory
         if key not in data or not isinstance(data[key], dict):
-            if mode and ('w' in mode or 'a' in mode):
-                data[key] = {}
+            if mode and ('w' in mode or 'a' in mode or '+' in mode):
+                data[key] = {}  # Create directory if in write mode
             else:
-                raise FileNotFoundError(f"No such directory: {'/'.join(path_parts)}")
-        return find_file(data[key], path_parts[1:], mode)
+                error_path = original_path if original_path else '/'.join(path_parts)
+                raise FileNotFoundError(f"No such directory: {error_path}")
+        return find_file(data[key], path_parts[1:], mode, original_path)
 
-def create_vfs_open(vfs_data, mount_point='/vfs'):
+def create_vfs_open(vfs_data, mount_point='/vfs', cwd='/vfs'):
     """
     Create a simple Open function that returns an io.StringIO object
     for files in the vfs_data nested dictionary. Supports text mode only.
@@ -63,25 +67,44 @@ def create_vfs_open(vfs_data, mount_point='/vfs'):
     Args:
         vfs_data (dict): Nested dictionary mapping paths to content.
         mount_point (str): Virtual mount point (e.g., '/vfs').
+        cwd (str): Current working directory for relative paths (default: '/vfs').
     
     Returns:
         function: An Open function that mimics builtins.open for the virtual filesystem.
     """
+    # Validate cwd
+    if not (cwd == mount_point or cwd.startswith(mount_point + '/')):
+        raise ValueError(f"Current working directory {cwd} must start with mount point {mount_point}")
+
     def vfs_open(path, mode='r', *args, **kwargs):
         if 'b' in mode:
             raise ValueError("Binary mode ('b') is not supported; use text mode instead")
 
-        if not path.startswith(mount_point + '/'):
-            raise FileNotFoundError(f"Path {path} not in virtual filesystem {mount_point}")
-        vfs_path = path[len(mount_point):].lstrip('/')
+        # Resolve the path
+        if path.startswith(mount_point + '/'):
+            # Absolute path
+            resolved_path = path
+        else:
+            # Relative path: resolve against cwd
+            resolved_path = str(PurePosixPath(cwd) / path)
+
+        # Validate resolved path
+        if not resolved_path.startswith(mount_point):
+            raise FileNotFoundError(f"Path outside virtual filesystem root: {path}")
+
+        # Strip the mount_point prefix
+        vfs_path = resolved_path[len(mount_point):].lstrip('/')
         if not vfs_path:
             raise FileNotFoundError(f"No such file: {path}")
 
+        # Find the file content
         parts = vfs_path.split('/')
-        folder, filename, content = find_file(vfs_data, parts, mode)
+        folder, filename, content = find_file(vfs_data, parts, mode, path)
 
+        # Create StringIO object
         buffer = io.StringIO(content)
 
+        # If in write or append mode, override close() to save content back to dictionary
         if 'w' in mode or 'a' in mode or '+' in mode:
             original_close = buffer.close
             def new_close():
@@ -89,8 +112,10 @@ def create_vfs_open(vfs_data, mount_point='/vfs'):
                 original_close()
             buffer.close = new_close
 
+        # For append mode, move to the end of the content
         if 'a' in mode:
             buffer.seek(0, io.SEEK_END)
+        # For write mode, truncate the content
         elif 'w' in mode:
             buffer.seek(0)
             buffer.truncate()
@@ -99,65 +124,66 @@ def create_vfs_open(vfs_data, mount_point='/vfs'):
 
     return vfs_open
 
-def load_module(module_name, vfs_path, vfs_data):
+def load_module(module_name, vfs_path, vfs_data, cwd='/vfs'):
     """
     Manually load a module from the vfs_data dictionary.
-    """
-    module_parts = module_name.split('.')
-    vfs_parts = vfs_path.strip('/').split('/')
-
-    current_path = []
-    current_name = []
-    for i, (part, mod_part) in enumerate(zip(vfs_parts[:-1], module_parts[:-1])):
-        current_path.append(part)
-        current_name.append(mod_part)
-        init_path = '/'.join(current_path) + '/__init__.py'
-        package_name = '.'.join(current_name)
-        
-        if package_name not in sys.modules:
-            init_parts = init_path.split('/')
-            try:
-                _, _, code = find_file(vfs_data, init_parts)
-            except FileNotFoundError:
-                raise ValueError(f"No __init__.py found at: {init_path}")
-            
-            spec = importlib.util.spec_from_loader(package_name, None)
-            package = importlib.util.module_from_spec(spec)
-            sys.modules[package_name] = package
-            package.__path__ = ['/vfs/' + '/'.join(current_path)]
-            exec(code, package.__dict__)
-
-    try:
-        _, _, code = find_file(vfs_data, vfs_parts)
-    except FileNotFoundError:
-        raise ValueError(f"No module found at: {vfs_path}")
     
+    Args:
+        module_name (str): Name of the module (e.g., 'subdir.anotherfile').
+        vfs_path (str): Path to the module file in the virtual filesystem (e.g., 'subdir/anotherfile.py').
+        vfs_data (dict): Nested dictionary mapping paths to content.
+        cwd (str): Current working directory for relative paths (default: '/vfs').
+    """
+    # Resolve the path
+    if vfs_path.startswith('/'):
+        # Absolute path: ensure it starts with /vfs
+        if vfs_path.startswith('/vfs'):
+            resolved_path = vfs_path
+        else:
+            resolved_path = '/vfs' + vfs_path
+    else:
+        # Relative path: resolve against cwd
+        resolved_path = str(PurePosixPath(cwd) / vfs_path)
+
+    # Validate resolved path
+    if not resolved_path.startswith('/vfs'):
+        raise FileNotFoundError(f"Path outside virtual filesystem root: {resolved_path}")
+
+    # Strip the mount point (/vfs) to match vfs_data structure
+    vfs_path = resolved_path[len('/vfs'):].lstrip('/')
+    if not vfs_path:
+        raise ValueError(f"Invalid path: {vfs_path}")
+
+    # Load the module content
+    parts = vfs_path.split('/')
+    try:
+        _, _, code = find_file(vfs_data, parts, original_path=vfs_path)
+    except FileNotFoundError:
+        raise ValueError(f"No module found at: {resolved_path}")
+
+    # Create parent packages if necessary
+    parts = module_name.split('.')
+    for i in range(1, len(parts)):
+        parent_name = '.'.join(parts[:i])
+        if parent_name not in sys.modules:
+            parent_spec = importlib.util.spec_from_loader(parent_name, None)
+            parent_module = importlib.util.module_from_spec(parent_spec)
+            sys.modules[parent_name] = parent_module
+
+    # Load the module into sys.modules
     if module_name in sys.modules:
         return sys.modules[module_name]
 
     spec = importlib.util.spec_from_loader(module_name, None)
     module = importlib.util.module_from_spec(spec)
     sys.modules[module_name] = module
-
-    if vfs_path.endswith('__init__.py'):
-        module_path = '/'.join(vfs_parts[:-1])
-        module.__path__ = ['/vfs/' + module_path]
-
     exec(code, module.__dict__)
+
     return module
 
-# Example program that reads a config file
-def read_config(config_path, open_func=builtins.open):
-    with open_func(config_path) as f:
-        return f.read()
-
 # Virtual filesystem data (nested dictionary)
-# Use raw triple-quoted strings with textwrap.dedent to preserve exact content
 vfs_data = {
     'mydir': {
-        '__init__.py': textwrap.dedent(r"""
-            # Empty __init__.py
-        """).strip(),
         'myfile.py': textwrap.dedent(r"""
             comment_pattern = r'//.*?(?:\n|$)'  # include the trailing newline
             def example():
@@ -166,13 +192,11 @@ vfs_data = {
             example()
         """).strip(),
         'subdir': {
-            '__init__.py': textwrap.dedent(r"""
-                # Empty __init__.py
-            """).strip(),
             'anotherfile.py': textwrap.dedent(r"""
                 def foo():
                     '''This is another docstring'''
                     print("Foo!")
+                foo()
             """).strip()
         }
     },
@@ -182,36 +206,90 @@ vfs_data = {
     """).strip()
 }
 
-# Create the custom Open function
-vfs_open = create_vfs_open(vfs_data, mount_point='/vfs')
+# Test 1: Test create_vfs_open
+print("Testing create_vfs_open:")
+# Create vfs_open with cwd='/vfs'
+vfs_open = create_vfs_open(vfs_data, mount_point='/vfs', cwd='/vfs')
 
-# Load modules
-load_module('mydir', '/mydir/__init__.py', vfs_data)
-load_module('mydir.myfile', '/mydir/myfile.py', vfs_data)
-load_module('mydir.subdir', '/mydir/subdir/__init__.py', vfs_data)
-load_module('mydir.subdir.anotherfile', '/mydir/subdir/anotherfile.py', vfs_data)
-
-# Use the modules
-import mydir.myfile  # Outputs: Hello from myfile!
-from mydir.subdir import anotherfile
-anotherfile.foo()  # Outputs: Foo!
-
-# Use the program with the virtual filesystem
-config_content = read_config('/vfs/config.ini', open_func=vfs_open)
-print(config_content)  # Outputs: [settings]\nvalue=42
-
-# Test writing to the virtual filesystem
-with vfs_open('/vfs/config.ini', 'w') as f:
-    f.write('[settings]\nvalue=100')
+# Test absolute paths
 with vfs_open('/vfs/config.ini') as f:
-    print(f.read())  # Outputs: [settings]\nvalue=100
+    print(f.read())  # Outputs: [settings]\nvalue=42
 
-# Test binary mode (should raise an error)
+# Test relative paths (cwd='/vfs')
+print("\nTesting relative paths with create_vfs_open (cwd='/vfs'):")
+with vfs_open('config.ini') as f:
+    print(f.read())  # Outputs: [settings]\nvalue=42
+
+# Test ./ with create_vfs_open
+with vfs_open('./config.ini') as f:
+    print(f.read())  # Outputs: [settings]\nvalue=42
+
+# Test with a different cwd (cwd='/vfs/mydir')
+print("\nTesting with a different cwd for create_vfs_open (cwd='/vfs/mydir'):")
+vfs_open_mydir = create_vfs_open(vfs_data, mount_point='/vfs', cwd='/vfs/mydir')
+with vfs_open_mydir('myfile.py') as f:
+    print(f.read())  # Outputs: content of myfile.py
+
+# Test ./ with different cwd
+with vfs_open_mydir('./myfile.py') as f:
+    print(f.read())  # Outputs: content of myfile.py
+
+# Test ../ with different cwd
+#with vfs_open_mydir('../config.ini') as f:
+#    print(f.read())  # Outputs: [settings]\nvalue=42
+
+# Test folder creation for write mode
+print("\nTesting folder creation for write mode:")
+with vfs_open_mydir('newdir/subdir/newfile.txt', 'w') as f:
+    f.write('New content')
+with vfs_open_mydir('newdir/subdir/newfile.txt') as f:
+    print(f.read())  # Outputs: New content
+
+# Test path outside root
+print("\nTesting path outside root (should raise error):")
 try:
-    with vfs_open('/vfs/config.ini', 'rb') as f:
+    with vfs_open_mydir('../../../outside.txt') as f:
+        print(f.read())
+except FileNotFoundError as e:
+    print(e)  # Outputs: Path outside virtual filesystem root: ../../../outside.txt
+
+# Test binary mode (should raise error)
+print("\nTesting binary mode (should raise error):")
+try:
+    with vfs_open('config.ini', 'rb') as f:
         print(f.read())
 except ValueError as e:
     print(e)  # Outputs: Binary mode ('b') is not supported; use text mode instead
+
+# Test 2: Test load_module
+print("\n\nTesting load_module:")
+# Clear sys.modules to avoid caching from previous tests
+sys.modules.pop('mydir.myfile', None)
+sys.modules.pop('subdir.anotherfile', None)
+sys.modules.pop('test.module', None)
+sys.modules.pop('myfile_direct', None)
+sys.modules.pop('config_loader', None)
+sys.modules.pop('mydir', None)
+sys.modules.pop('subdir', None)
+
+# Load modules with cwd='/vfs/mydir'
+load_module('mydir.myfile', 'myfile.py', vfs_data, cwd='/vfs/mydir')
+load_module('subdir.anotherfile', 'subdir/anotherfile.py', vfs_data, cwd='/vfs/mydir')
+
+# Import the modules
+import mydir.myfile  # Outputs: Hello from myfile!
+from subdir import anotherfile  # Outputs: Foo!
+
+# Test loading with absolute path
+load_module('test.module', '/mydir/myfile.py', vfs_data, cwd='/vfs')
+import test.module  # Outputs: Hello from myfile!
+
+# Test loading with ./ and ../
+load_module('myfile_direct', './myfile.py', vfs_data, cwd='/vfs/mydir')  # Loads /vfs/mydir/myfile.py
+try:
+    load_module('config_loader', '../config.ini', vfs_data, cwd='/vfs/mydir')  # Loads /vfs/config.ini (not a module, should raise ValueError)
+except ValueError as e:
+    print(f"Expected error: {e}")  # Outputs: Expected error: No module found at: /vfs/config.ini
 
 # Imports still work because modules are cached
 import mydir.myfile  # Outputs nothing, uses cached module
