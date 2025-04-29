@@ -296,12 +296,14 @@ import mydir.myfile  # Outputs nothing, uses cached module
 ```
 
 ```python
+vfs={}
 vfs['es6_html_to_iife_html.py']=r"""
 import re
 import os
 from bs4 import BeautifulSoup
 from collections import defaultdict
 import re
+open=open # used if embedded in Jupyter notebooks: gets replaced to use a virtual file system
 
 def combine_patterns(*patterns):
   combined_pattern ='|'.join(f'(?P<pattern{i}>'+pattern[0]+')' for i,pattern in enumerate(patterns))
@@ -430,6 +432,7 @@ def gather_dependencies(content, processed_modules, dependencies, in_process=Non
     for ifile_name,ifile_path in imports.items():
         dependencies[module_filename].add(ifile_name)
         full_path = os.path.join(os.path.dirname(module_dir), ifile_path)
+#        print(f'{full_path = }')
         imodule_dir=os.path.dirname(full_path)
         with open(full_path, 'r') as f:
            content = f.read()
@@ -437,7 +440,14 @@ def gather_dependencies(content, processed_modules, dependencies, in_process=Non
     if module_filename:
       in_process.remove(module_filename)
     return dependency_content + converted
-
+    
+def convertES6toIIFE(content="import from './main.js';",module_dir='',module_filename='',minify=True):
+  processed_modules = set()
+  dependencies = defaultdict(set)
+  iife_content = gather_dependencies(content, processed_modules, dependencies,  
+                module_dir=module_dir, module_filename=module_filename,  minify=minify)
+  return iife_content
+                
 def process_html(html_path,minify=False,output_file='output.html'):
     with open(html_path, 'r') as file:
         soup = BeautifulSoup(file, 'html.parser')
@@ -506,6 +516,16 @@ if __name__ == "__main__":
 '''
     
 """
+```
+
+```python
+ES6converter=load_module('es6_html_to_iife_html','es6_html_to_iife_html.py',vfs)
+ES6converter.open=create_vfs_open(vfs)
+dir(ES6converter)
+```
+
+```python
+__builtins__.op
 ```
 
 # Python generating JavaScript code for m4.js
