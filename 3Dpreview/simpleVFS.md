@@ -16,7 +16,7 @@ kernelspec:
 import sys
 import io
 from pathlib import PurePath
-    
+
 # Custom StringIO class to handle VFS updates
 class VFSStringIO(io.StringIO):
     def __init__(self, vfs, path, initial_value='', mode='r'):
@@ -25,22 +25,43 @@ class VFSStringIO(io.StringIO):
         self.path = path
         self.mode = mode
         if mode == 'a':
-           self.seek(0, io.SEEK_END)
-
+            self.seek(0, io.SEEK_END)
 
     def close(self):
         if self.mode in ('w', 'a'):
-            # Save the content back to the VFS when closing
             self.vfs[self.path] = self.getvalue()
         super().close()
 
 # SimpleVFS class with support for 'r', 'w', and 'a' modes
 class SimpleVFS(dict):
+    def __init__(self, mount_point='/', default_cwd='/', home_dir='/'):
+        """
+        Initialize the SimpleVFS with a mount point, default working directory, and home directory.
+
+        Args:
+            mount_point (str): The root of the virtual filesystem (default: '/').
+            default_cwd (str, optional): The default current working directory (default: mount_point + '/').
+            home_dir (str, optional): The virtual home directory for '~/...' paths (default: mount_point + '/home').
+        """
+        super().__init__()
+        self.mount_point = PurePath(mount_point).as_posix()
+        # Default default_cwd to mount_poin if not provided
+        self.default_cwd = PurePath(default_cwd if default_cwd is not None else PurePath(self.mount_point)).as_posix()
+        # Default home_dir to mount_point if not provided
+        self.home_dir = PurePath(home_dir if home_dir is not None else PurePath(self.mount_point)).as_posix()
+        # Validate that default_cwd and home_dir are under the mount point
+        for path, name in [(self.default_cwd, 'default_cwd'), (self.home_dir, 'home_dir')]:
+            if not path.startswith(self.mount_point):
+                raise ValueError(f"{name.capitalize()} {path} must start with mount point {self.mount_point}")
+
     def _normalize_path(self, path):
-        if isinstance(path, (list, tuple)):
-            path = "/".join(str(p) for p in path)
-        return PurePath(path).as_posix() 
-        
+        if not isinstance(path, str):
+            raise TypeError(f"Path must be a string, got {type(path)}")
+        normalized = PurePath(path).as_posix().lstrip('/')
+        if not normalized:
+            raise ValueError("Empty path is not allowed")
+        return normalized
+
     def __setitem__(self, key, value):
         normalized_key = self._normalize_path(key)
         super().__setitem__(normalized_key, value)
@@ -48,67 +69,81 @@ class SimpleVFS(dict):
     def __getitem__(self, key):
         normalized_key = self._normalize_path(key)
         return super().__getitem__(normalized_key)
-    
 
     def open(self, path, mode='r', cwd=None):
-        # Resolve the full path using cwd (current working directory)
-        full_path = PurePath(cwd or "/") / path
-        normalized_path = full_path.as_posix()
- #       print(f'{full_path=}, {normalized_path=}')
+        """
+        Open a file in the virtual filesystem.
+
+        Args:
+            path (str): The path to the file. Supports './' (relative to cwd), '~/' (relative to home_dir),
+                        absolute paths (starting with '/'), and relative paths.
+            mode (str): The mode ('r', 'w', 'a').
+            cwd (str, optional): The current working directory. Defaults to self.default_cwd.
+        """
+        if cwd is not None and not isinstance(cwd, str):
+            raise TypeError(f"cwd must be a string or None, got {type(cwd)}")
+        if cwd == '':
+            raise ValueError("cwd cannot be an empty string")
+        cwd = PurePath(cwd if cwd is not None else self.default_cwd)
+        path = PurePath(path)
+
+        # Handle '~/...' paths by replacing '~' with home_dir
+        if path.as_posix().startswith('~/'):
+            resolved_path = PurePath(self.home_dir) / path.as_posix()[2:]  # Skip '~/'
+        else:
+            # Check if the path is absolute or relative
+            if path.is_absolute():
+                resolved_path = path
+            else:
+                # Relative path: resolve against cwd
+                resolved_path = cwd / path
+
+        # Resolve the full path
+        full_path = resolved_path
+        full_path_str = full_path.as_posix()
+
+        # Ensure the path starts with the mount point
+        try:
+            # This will raise a ValueError if full_path is not under mount_point
+            relative_path = PurePath(full_path_str).relative_to(self.mount_point).as_posix()
+        except ValueError:
+            raise ValueError(f"Path {full_path_str} is outside the mount point {self.mount_point}")
+
+        # The relative_path is the key for storage (already has leading '/' stripped by relative_to)
+        normalized_path = relative_path
+        if not normalized_path and mode != 'w':
+            raise ValueError("Cannot open the root mount point in read or append mode")
+
         if mode == 'r':
-            # Read mode: get existing content or raise error if not found
             content = self.get(normalized_path)
             if content is None:
                 raise FileNotFoundError(f"No such file: {normalized_path}")
             return VFSStringIO(self, normalized_path, initial_value=content, mode=mode)
         elif mode == 'w':
-            # Write mode: start with an empty string
             return VFSStringIO(self, normalized_path, initial_value='', mode=mode)
         elif mode == 'a':
-            # Append mode: start with existing content or empty string
             content = self.get(normalized_path, '')
-            print(f'{content=}')
             return VFSStringIO(self, normalized_path, initial_value=content, mode=mode)
         else:
             raise ValueError(f"Unsupported mode: {mode}")
-    def create_open(self,cwd='./'):
-        return lambda filename,mode='r':self.open(filename,mode,cwd)
 
-# Example usage in a Jupyter Notebook
-vfs = SimpleVFS()
+    def create_open(self, cwd=None):
+        effective_cwd = cwd if cwd is not None else self.default_cwd
+        return lambda filename, mode='r': self.open(filename, mode, effective_cwd)
 
-# Writing to a new file
-with vfs.open("new/file.txt", mode='w') as f:
-    f.write("Hello, world!")
-
-# Reading the file
-with vfs.open("new/file.txt", mode='r') as f:
-    print(f.read())  # Output: Hello, world!
-
-# Appending to the file
-with vfs.open("new/file.txt", mode='a') as f:
-    f.write(" Appending this.")
-
-# Reading again
-with vfs.open("new/file.txt", mode='r') as f:
-    print(f.read())  # Output: Hello, world! Appending this.
-```
-
-```{code-cell} ipython3
-def load_module(module_name,module_path=None,open=open):
+def load_module(module_name, module_path=None, open=open):
     import importlib
     import sys
-    if module_path==None:
-        module_path=module_name+'.py'
+    if module_path is None:
+        module_path = module_name + '.py'
     if module_name in sys.modules:
         return sys.modules[module_name]
     spec = importlib.util.spec_from_loader(module_name, None)
     module = importlib.util.module_from_spec(spec)
     sys.modules[module_name] = module
     with open(module_path) as f:
-      code=f.read()
-      print(f'{code[:50]=}')
-      exec(code, module.__dict__)
+        code = f.read()
+        exec(code, module.__dict__)
     return module
 ```
 
@@ -339,7 +374,7 @@ if __name__ == "__main__":
 ```
 
 ```{code-cell} ipython3
-ES6converter=load_module('es6_html_to_iife_html','es6_html_to_iife_html.py', vfs.create_open())
+ES6converter=load_module('es6_html_to_iife_html','/es6_html_to_iife_html.py', vfs.create_open())
 ```
 
 ```{code-cell} ipython3
