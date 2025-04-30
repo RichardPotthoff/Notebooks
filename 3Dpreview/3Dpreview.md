@@ -12,6 +12,10 @@ kernelspec:
   name: python3
 ---
 
+[![Run Jupyter Notebooks](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/RichardPotthoff/Notebooks/main?filepath=3Dpreview/3Dpreview.ipynb)
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/RichardPotthoff/Notebooks/blob/main/3Dpreview/3Dpreview.ipynb)
+
 ```{code-cell} ipython3
 import sys
 import io
@@ -179,8 +183,8 @@ multiline_string_pattern = r'`(?:[^`\\]|\\.)*`'
 comment_pattern = r'//.*?(?:\n|$)'#include the trailing newline
 multiline_comment_pattern = r'/\*[\s\S]*?\*/'
 delimiters=r'[=({:<>;,?%&|*+-/' #removing ]}) from delimiters because of problems with asi not inserting semicolons if there is a \n behind the delimiter
-whitespaces_to_right_of_delimiter =r'(?<=['+delimiters+r'])\s*'
-whitespaces_to_left_of_delimiter =r'\s*(?=['+delimiters+'\]})'+r'])'
+whitespaces_to_right_of_delimiter =r'(?<=['+delimiters+r'])\s+'
+whitespaces_to_left_of_delimiter =r'\s*(?=[]'+delimiters+'})'+r'])'
 whitespaces_containing_newline=r'\s*\n\s*'
 two_or_more_whitespaces = r'\s\s+'
   
@@ -762,7 +766,7 @@ list(vfs.keys())
 
 +++
 
-## webgl-torus.html 
+## webgl-torus.html
 
 ```{code-cell} ipython3
 vfs["webgl_torus.html"]=r"""
@@ -783,7 +787,8 @@ vfs["webgl_torus.html"]=r"""
 
 ```{code-cell} ipython3
 vfs["webgl-torus.js"]=r"""
-const element=document.body;
+if (typeof element === 'undefined') 
+   global.element=document.body;
 const deg=Math.PI / 180;
 const iDeg=1/deg;
 export function radToDeg(r) {
@@ -838,7 +843,7 @@ void main() {
 `;
 export const state={animate:false};
 const hint=document.createElement("div");
-hint.innerText="Drag to rotate.";
+hint.innerText="Colors indicate surface normal directions: +xyz=rgb, -xyz=cmy \nDrag to rotate.";
 element.appendChild(hint);
 const canvas = document.createElement("canvas");
 canvas.style.display="inline-block";
@@ -1093,7 +1098,8 @@ function initialize() {
   let indexBuffer = gl.createBuffer();
   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
   gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, ShapeData.indices, gl.STATIC_DRAW);
-  drawScene();
+  requestAnimationFrame(drawScene);
+//  drawScene();
 }
 
   function updateTargetAngle(event, ui) {
@@ -1186,10 +1192,43 @@ initialize();
 """
 ```
 
-## 
+##
 
 ```{code-cell} ipython3
 list(vfs.keys())
+```
+
+```{code-cell} ipython3
+ES6converter.open=vfs.create_open()
+```
+
+```{code-cell} ipython3
+from time import perf_counter
+print(f'{(len1:=len(vfs["webgl-torus.js"]))=}\n{(len2:=len(vfs["m4_cMaj.js"])) = }\n{len1+len2 = }')
+print()
+t1=perf_counter()
+iife_script=ES6converter.convertES6toIIFE('import "./webgl-torus.js";',minify=True)
+print("HTML processing completed with ES6 modules converted to IIFE functions.")
+t2=perf_counter()
+print()
+print(f'{t2-t1=}s')
+print()
+print(f'{len(iife_script)=}')
+print()
+print('IIFE JavaScript:\n',iife_script[:500], ' ...') 
+```
+
+```{code-cell} ipython3
+from IPython.display import display,Javascript
+import ipywidgets as widgets
+output=widgets.Output()
+with output:
+    display(Javascript(iife_script))
+display(output)
+```
+
+```{code-cell} ipython3
+#display(Javascript("modules['webgl-torus.js'].render();"))
 ```
 
 ```{code-cell} ipython3
