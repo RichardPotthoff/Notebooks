@@ -755,5 +755,443 @@ print(vfs["m4_cMaj.js"])
 ```
 
 ```{code-cell} ipython3
+list(vfs.keys())
+```
+
+# HTML & JavaScript files
+
++++
+
+## webgl-torus.html 
+
+```{code-cell} ipython3
+vfs["webgl_torus.html"]=r"""
+<!DOCTYPE html>
+<html>
+<head> 
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+<title>WebGL - 3D Torus</title>
+</head>
+<body></body>
+<script src="./webgl-torus.js" type="module"></script>
+</html>
+"""
+```
+
+## webgl-torus.js
+
+```{code-cell} ipython3
+vfs["webgl-torus.js"]=r"""
+const element=document.body;
+const deg=Math.PI / 180;
+const iDeg=1/deg;
+export function radToDeg(r) {
+    return r * iDeg;
+  }
+
+export function degToRad(d) {
+    return d * deg;
+  }
+ 
+export let vertexShaderSource=`
+attribute vec4 a_position;
+attribute vec4 a_normal;
+
+uniform mat4 u_matrix;
+
+varying vec4 v_color;
+
+void main() {
+  // Multiply the position by the matrix.
+  gl_Position = u_matrix * a_position;
+
+  // Pass the color to the fragment shader.
+  v_color = vec4(0.0,0.0,0.0,1.0);  
+
+  float wxp =max(a_normal.x,0.0);
+  float wxn =max(-a_normal.x,0.0);
+  float wyp= max(a_normal.y,0.0);
+  float wyn= max(-a_normal.y,0.0);
+  float wzp= max(a_normal.z,0.0);
+  float wzn= max(-a_normal.z,0.0);
+  
+  v_color.xyz += wxp*wxp*wxp *vec3(1.0,0.0,0.0);
+  v_color.xyz += wxn*wxn*wxn *vec3(0.1725,0.8157,0.7843);
+  v_color.xyz += wyp*wyp*wyp *vec3(0.0,0.8706,0.0);
+  v_color.xyz += wyn*wyn*wyn *vec3(0.9412,0.06275,1.0);
+  v_color.xyz += wzp*wzp*wzp *vec3(0.102,0.3451,1.0);
+  v_color.xyz += wzn*wzn*wzn *vec3(0.9137,0.9098,0.07451);
+
+}
+`;
+
+export let fragmentShaderSource=`
+precision mediump float;
+
+// Passed in from the vertex shader.
+varying vec4 v_color;
+
+void main() {
+   gl_FragColor = v_color;
+}
+`;
+export const state={animate:false};
+const hint=document.createElement("div");
+hint.innerText="Drag to rotate.";
+element.appendChild(hint);
+const canvas = document.createElement("canvas");
+canvas.style.display="inline-block";
+canvas.style.width="400px";
+canvas.style.height="400px";
+element.appendChild(canvas);
+const  gl = canvas.getContext("webgl");
+// Assuming you have a canvas and a 3D scene setup (could be with Three.js or similar)
+
+//const canvas = document.getElementById('myCanvas');
+let isDragging = false;
+let previousTouchX = 0;
+let previousTouchY = 0;
+//let rotationX = 0;
+//let rotationY = 0;
+let scale = 1;
+let translateX = 0;
+let translateY = 0;
+
+// Touch Start
+canvas.addEventListener('touchstart', (e) => {
+    e.preventDefault(); // Prevent scrolling
+    isDragging = true;
+    
+    // Store initial touch position
+    if (e.touches.length === 1) {
+        previousTouchX = e.touches[0].clientX;
+        previousTouchY = e.touches[0].clientY;
+    }
+});
+
+// Touch Move
+canvas.addEventListener('touchmove', (e) => {
+    e.preventDefault();
+    
+    if (!isDragging) return;
+
+    if (e.touches.length === 1) {
+        // Single finger - Rotation
+        const currentX = e.touches[0].clientX;
+        const currentY = e.touches[0].clientY;
+        
+        // Calculate movement delta
+        const deltaX = currentX - previousTouchX;
+        const deltaY = currentY - previousTouchY;
+        
+        // Update rotation (adjust sensitivity as needed)
+        camera.azim = (camera.azim-deltaX * 0.01) % (Math.PI*2);
+        camera.elev = Math.max(Math.min(camera.elev+deltaY * 0.01,Math.PI/2),-Math.PI/2);
+        
+        // Update previous position
+        previousTouchX = currentX;
+        previousTouchY = currentY;
+        
+    } else if (e.touches.length === 2) {
+        // Two fingers - Zoom and Pan
+        
+        // Calculate distance between touches
+        const touch1 = e.touches[0];
+        const touch2 = e.touches[1];
+        const currentDistance = Math.hypot(
+            touch1.clientX - touch2.clientX,
+            touch1.clientY - touch2.clientY
+        );
+        
+        // Store initial distance on first two-finger touch
+        if (!canvas.dataset.previousDistance) {
+            canvas.dataset.previousDistance = currentDistance;
+        }
+        
+        // Zoom calculation
+        const previousDistance = parseFloat(canvas.dataset.previousDistance);
+        const distanceDelta = currentDistance - previousDistance;
+        scale += distanceDelta * 0.005;
+        scale = Math.max(0.1, Math.min(scale, 10)); // Limit zoom range
+        
+        // Pan calculation (using midpoint movement)
+        const midX = (touch1.clientX + touch2.clientX) / 2;
+        const midY = (touch1.clientY + touch2.clientY) / 2;
+        
+        if (canvas.dataset.previousMidX) {
+            translateX += midX - parseFloat(canvas.dataset.previousMidX);
+            translateY += midY - parseFloat(canvas.dataset.previousMidY);
+        }
+        
+        // Store current values for next frame
+        canvas.dataset.previousDistance = currentDistance;
+        canvas.dataset.previousMidX = midX;
+        canvas.dataset.previousMidY = midY;
+    }
+    
+    // Apply transformations to your 3D object here
+    drawScene();
+});
+
+// Touch End
+canvas.addEventListener('touchend', (e) => {
+    e.preventDefault();
+    isDragging = false;
+    // Clean up stored values
+    delete canvas.dataset.previousDistance;
+    delete canvas.dataset.previousMidX;
+    delete canvas.dataset.previousMidY;
+});
+
+// Touch Cancel (in case touch is interrupted)
+canvas.addEventListener('touchcancel', () => {
+    isDragging = false;
+    delete canvas.dataset.previousDistance;
+    delete canvas.dataset.previousMidX;
+    delete canvas.dataset.previousMidY;
+});
+
+// Example function to update 3D object (adapt to your 3D library)
+//function update3DObject() {
+    // For Three.js example:
+    /*
+    yourObject.rotation.x = rotationX;
+    yourObject.rotation.y = rotationY;
+    yourObject.scale.set(scale, scale, scale);
+    yourObject.position.x = translateX;
+    yourObject.position.y = translateY;
+    */
+//    console.log('Rotation:', rotationX, rotationY);
+//    console.log('Scale:', scale);
+//    console.log('Translation:', translateX, translateY);
+//}
+
+// Optional: Prevent default touch behavior on the document
+document.addEventListener('touchmove', (e) => {
+    if (e.target === canvas) {
+        e.preventDefault();
+    }
+}, { passive: false });
+
+export let program;
+export let normalLocation;
+export let positionLocation;
+export let matrixLocation;
+//export let cameraDistance;
+export const camera={
+	fov:30*deg, 
+	target:[0,0,0], 
+	azim:30*deg, 
+	elev:40*deg,
+	dist:1000
+};
+
+  
+function cube(dx=1,dy,dz){
+  const numVertices=24;
+  const stride=6*4;
+  const X=0.5*dx;
+  const Y=dy|X;
+  const Z=dz|X;
+  const vertices= new Float32Array([
+    X,-Y,-Z, 1, 0, 0, X, Y,-Z, 1, 0, 0, X, Y, Z, 1, 0, 0, X,-Y, Z, 1, 0, 0,//+X
+   -X, Y, Z,-1, 0, 0,-X, Y,-Z,-1, 0, 0,-X,-Y,-Z,-1, 0, 0,-X,-Y, Z,-1, 0, 0,//-X
+   -X, Y,-Z, 0, 1, 0,-X, Y, Z, 0, 1, 0, X, Y, Z, 0, 1, 0, X, Y,-Z, 0, 1, 0,//+Y
+    X,-Y, Z, 0,-1, 0,-X,-Y, Z, 0,-1, 0,-X,-Y,-Z, 0,-1, 0, X,-Y,-Z, 0,-1, 0,//-Y
+   -X,-Y, Z, 0, 0, 1, X,-Y, Z, 0, 0, 1, X, Y, Z, 0, 0, 1,-X, Y, Z, 0, 0, 1,//+Z
+    X, Y,-Z, 0, 0,-1, X,-Y,-Z, 0, 0,-1,-X,-Y,-Z, 0, 0,-1,-X, Y,-Z, 0, 0,-1,//-Z
+  ]);
+  const indices=new Int16Array([
+   0, 1, 2, 2, 3, 0,//+X
+   4, 5, 6, 6, 7, 4,//-X
+   8, 9,10,10,11, 8,//+Y
+  12,13,14,14,15,12,//-Y
+  16,17,18,18,19,16,//+Z
+  20,21,22,22,23,20 //-Z
+  ]);
+  return {indices,vertices,stride,numVertices};
+}
+  
+function circle(r,n){
+	  const epath=[]
+	  for (let i=0;i<n;i++){
+	    const theta=i*2*Math.PI/n;
+		const s=Math.sin(theta);
+		const c=Math.cos(theta);
+		epath[i] = [[r*c,r*s],[-s,c]];//x
+	}
+	return epath;
+}
+function extrude(epath,shape){
+	const m=epath.length;
+	const n=shape.length;
+	const numVertices=m*n;
+	const vertices=new Float32Array(numVertices*6);//xyz dxdydz (coordinate and direction vector)
+	const stride=6*4;//xyz dxdydz float32
+	const indices=new Int16Array(numVertices*6);//2 triangles per vertex
+//	console.log(numVertices)
+	for (let j=0;j<m;j++){
+		let [[x_p,y_p],[ms_p,c_p]]=epath[j];
+		for (let i=0;i<n;i++){
+		    const [[x_s,y_s],[ms_s,c_s]]=shape[i];
+			const k=j*n+i
+			vertices[k*6 + 0]= x_p+x_s*c_p;
+			vertices[k*6 + 1]= y_p-x_s*ms_p;
+            vertices[k*6 + 2]= y_s; //z is the y direction of the shape
+			vertices[k*6 + 3]= c_s*c_p;
+			vertices[k*6 + 4]= -c_s*ms_p;
+			vertices[k*6 + 5]= -ms_s;
+			indices[k*6+0]=  j           * n +   i          ; //j  ,i  
+			indices[k*6+1]=((j + 1) % m) * n + ((i + 1) % n); //j+1,i+1
+			indices[k*6+2]=  j           * n + ((i + 1) % n); //j  ,i+1
+			indices[k*6+3]=  j           * n +   i          ; //j  ,i  
+			indices[k*6+4]=((j + 1) % m) * n +   i          ; //j+1,i
+			indices[k*6+5]=((j + 1) % m) * n + ((i + 1) % n); //j+1,i+1
+		}
+	}
+	return {indices,vertices,stride,numVertices}
+}
+
+export const ShapeData={};
+
+function initialize() {
+  Object.assign(ShapeData,(extrude(circle(150,50),circle(50.0,30))));
+	//  ShapeData=cube(150);
+//  console.log(ShapeData.vertices.slice(0, 24));
+  if (!gl) {
+    return;
+  }
+  // setup GLSL program
+  const vertexShader=gl.createShader(gl.VERTEX_SHADER);
+  gl.shaderSource(vertexShader, vertexShaderSource);
+  gl.compileShader(vertexShader);
+  const fragmentShader=gl.createShader(gl.FRAGMENT_SHADER);
+  gl.shaderSource(fragmentShader,fragmentShaderSource);
+  gl.compileShader(fragmentShader);
+  program = gl.createProgram();
+  [vertexShader,fragmentShader].forEach(function(shader) {
+      gl.attachShader(program, shader);
+    });
+  gl.linkProgram(program);
+  gl.useProgram(program);
+  // look up where the vertex data needs to go.
+  positionLocation = gl.getAttribLocation(program, "a_position");
+  normalLocation = gl.getAttribLocation(program, "a_normal");
+  // lookup uniforms
+  matrixLocation = gl.getUniformLocation(program, "u_matrix");
+  // Create a buffer to put positions in
+  let vertexBuffer = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+  gl.bufferData(gl.ARRAY_BUFFER,ShapeData.vertices , gl.STATIC_DRAW);
+  //set vertex position attributes
+  gl.enableVertexAttribArray(positionLocation);   
+  gl.vertexAttribPointer(positionLocation,3,gl.FLOAT,false,ShapeData.stride,0);
+  // set the color attribute
+  gl.enableVertexAttribArray(normalLocation);
+  gl.vertexAttribPointer(normalLocation,3,gl.FLOAT,true,ShapeData.stride,12);
+  let indexBuffer = gl.createBuffer();
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+  gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, ShapeData.indices, gl.STATIC_DRAW);
+  drawScene();
+}
+
+  function updateTargetAngle(event, ui) {
+    targetAngleRadians = degToRad(ui.value);
+    target[0] = Math.sin(targetAngleRadians) * targetRadius;
+    target[2] = Math.cos(targetAngleRadians) * targetRadius;
+    drawScene();
+  }
+
+  function updateTargetHeight(event, ui) {
+    target[1] = ui.value;
+    drawScene();
+  }
+  function updateSceneRotation(event, ui) {
+    sceneRotationRadians = degToRad(ui.value);
+    drawScene();
+  }
+
+  function updateSceneElevation(event, ui) {
+    sceneElevationRadians = degToRad(ui.value);
+    drawScene();
+  }
+  
+  // Draw the scene.
+  export function drawScene() {
+	let targ=[0,0,0];
+	let cM=M4.camMat(targ,camera.azim,camera.elev,camera.dist);
+	console.log("camMat",cM);
+	let icM=M4.icamMat(targ,cM,camera.dist);
+    console.log("icamMat",icM);
+	console.log("vMul(icM,[0,0,0,1])",M4.vMul(icM,[0,0,0,1]))
+	let cP=M4.camPos(targ,cM,camera.dist);
+	console.log("camPos",cP);
+	console.log("vRot",M4.vRot([0,0,camera.azim]));
+	
+    let numFs = 5;
+	
+    gl.canvas.width=gl.canvas.clientWidth;
+	gl.canvas.height=gl.canvas.clientHeight;
+    // Tell WebGL how to convert from clip space to pixels
+    gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+
+    // Clear the canvas AND the depth buffer.
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+    // Turn on culling. By default backfacing triangles
+    // will be culled.
+    gl.enable(gl.CULL_FACE);
+
+    // Enable the depth buffer
+    gl.enable(gl.DEPTH_TEST);
+
+    // Tell it to use our program (pair of shaders)
+    gl.useProgram(program);
+
+    // Compute the projection matrix
+    let aspR = gl.canvas.clientWidth / gl.canvas.clientHeight;
+    let zNear = 1;
+    let zFar = camera.dist+1000;
+    let projectionMatrix = M4.persp(camera.fov, aspR, zNear, zFar);
+	
+    // create a viewProjection matrix. This will both apply perspective
+    // AND move the world so that the camera is effectively the origin
+    let viewProjectionMatrix = M4.mMul(projectionMatrix,cM);
+	drawTorus([1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1], viewProjectionMatrix, matrixLocation);
+	if (state.animate){
+	  //console.log(`Animating, rot: ${parseFloat(slider.value).toFixed(0)} deg`);
+      camera.azim = (camera.azim+0.02)%(Math.PI*2);
+      slider.value = (camera.azim/deg);
+      requestAnimationFrame(drawScene);
+    }
+  }
+
+  function drawTorus(matrix, viewProjectionMatrix, matrixLocation) {
+    // multiply that with the viewProjecitonMatrix
+    matrix = M4.mMul(viewProjectionMatrix, matrix);
+    // Set the matrix.
+    gl.uniformMatrix4fv(matrixLocation, false, M4.cMaj(matrix));
+
+    // Draw the geometry.
+    gl.drawElements(gl.TRIANGLES, ShapeData.indices.length, gl.UNSIGNED_SHORT, 0);
+
+  }
+export {drawScene as render};
+//import * as m4 from './m4.js';
+//import * as M4 from './M4.js';
+import * as M4 from './m4_cMaj.js';
+//let {addVectors,subtractVectors,normalize,cross}=m4;
+initialize();
+"""
+```
+
+## 
+
+```{code-cell} ipython3
+list(vfs.keys())
+```
+
+```{code-cell} ipython3
 
 ```
