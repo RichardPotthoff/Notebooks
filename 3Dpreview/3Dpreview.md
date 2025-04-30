@@ -18,7 +18,7 @@ kernelspec:
 
 +++
 
-# 3D webgl javascript test
+# 3D webgl JavaScript test
 
 +++
 
@@ -171,7 +171,7 @@ def load_module(module_name, module_path=None, open=open):
 vfs=SimpleVFS()
 ```
 
-## ES6 Javascript to IIFE converter and minifyer (Python module)
+## ES6 JavaScript to IIFE converter and minifyer (Python module)
 
 ```{code-cell} ipython3
 vfs['es6_html_to_iife_html.py']=r"""
@@ -381,7 +381,7 @@ if __name__ == "__main__":
     
     html_file = "modular.html"
     process_html(html_file,minify=True,output_file='index.html')
-    print("HTML processing completed with modules converted to IIFE.")
+    print("HTML processing completed with embedded ES6 modules converted to IIFE.")
     t2=perf_counter()
     print(f'{t2-t1=}')
     
@@ -395,7 +395,7 @@ if __name__ == "__main__":
 """
 ```
 
-## Load a Python module from the VFS 
+## Load a Python module from the VFS
 
 ```{code-cell} ipython3
 ES6converter=load_module('es6_html_to_iife_html','/es6_html_to_iife_html.py', vfs.create_open())
@@ -408,8 +408,8 @@ ES6converter.open=vfs.create_open()
 dir(ES6converter)
 ```
 
-## Code generator for a Matrix ES6 Javasceipt module
-A Python script that generates javascript code "m4_cMaj.js" + "m4_rMaj.js" for matrix operations. (using sympy)
+## Code generator for a Matrix ES6 JavaScript module
+A Python script that generates JavaScript code "m4_cMaj.js" + "m4_rMaj.js" for matrix operations. (using sympy)
 
 ```{code-cell} ipython3
 import sympy as sp
@@ -648,7 +648,7 @@ def print_camPos(output=sys.stdout,column_major=True):
     return l
   print(
     'export function camPos(targ,camMat,d){\n'
-    '  //camera position in world coordinates'
+    '  //Camera position in world coordinates'
     '  // tx,ty,tz: target coordinates\n'
     '  // camMat: camera matrix\n'
     '  // d: distance of camera from target. \n' 
@@ -867,7 +867,7 @@ void main() {
 `;
 export const state={animate:false};
 const hint=document.createElement("div");
-hint.innerText="Colors indicate surface normal directions: +xyz=rgb, -xyz=cmy \nDrag to rotate.";
+hint.innerText="Colors indicate surface normal directions: +xyz=rgb, -xyz=cmy \nDrag to rotate the view.";
 element.appendChild(hint);
 const canvas = document.createElement("canvas");
 canvas.style.display="inline-block";
@@ -875,9 +875,7 @@ canvas.style.width="400px";
 canvas.style.height="400px";
 element.appendChild(canvas);
 const  gl = canvas.getContext("webgl");
-// Assuming you have a canvas and a 3D scene setup (could be with Three.js or similar)
 
-//const canvas = document.getElementById('myCanvas');
 let isDragging = false;
 let previousTouchX = 0;
 let previousTouchY = 0;
@@ -981,21 +979,6 @@ canvas.addEventListener('touchcancel', () => {
     delete canvas.dataset.previousMidX;
     delete canvas.dataset.previousMidY;
 });
-
-// Example function to update 3D object (adapt to your 3D library)
-//function update3DObject() {
-    // For Three.js example:
-    /*
-    yourObject.rotation.x = rotationX;
-    yourObject.rotation.y = rotationY;
-    yourObject.scale.set(scale, scale, scale);
-    yourObject.position.x = translateX;
-    yourObject.position.y = translateY;
-    */
-//    console.log('Rotation:', rotationX, rotationY);
-//    console.log('Scale:', scale);
-//    console.log('Translation:', translateX, translateY);
-//}
 
 // Optional: Prevent default touch behavior on the document
 document.addEventListener('touchmove', (e) => {
@@ -1124,33 +1107,8 @@ function initialize() {
   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
   gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, ShapeData.indices, gl.STATIC_DRAW);
   requestAnimationFrame(drawScene);
-//  drawScene();
 }
 
-  function updateTargetAngle(event, ui) {
-    targetAngleRadians = degToRad(ui.value);
-    target[0] = Math.sin(targetAngleRadians) * targetRadius;
-    target[2] = Math.cos(targetAngleRadians) * targetRadius;
-    if (!state.animate) 
-      drawScene();
-  }
-
-  function updateTargetHeight(event, ui) {
-    target[1] = ui.value;
-    if (!state.animate)
-      drawScene();
-  }
-  function updateSceneRotation(event, ui) {
-    sceneRotationRadians = degToRad(ui.value);
-    if (!state.animate)
-      drawScene();
-  }
-
-  function updateSceneElevation(event, ui) {
-    sceneElevationRadians = degToRad(ui.value);
-    if (!state.animate)
-      drawScene();
-  }
   
   // Draw the scene.
   export function drawScene() {
@@ -1164,7 +1122,7 @@ function initialize() {
 //	console.log("camPos",cP);
 //	console.log("vRot",M4.vRot([0,0,camera.azim]));
 	
-    let numFs = 5;
+
 	
     gl.canvas.width=gl.canvas.clientWidth;
 	gl.canvas.height=gl.canvas.clientHeight;
@@ -1253,7 +1211,7 @@ print('IIFE JavaScript:\n',iife_script[:500], ' ...')
 ```
 
 ## Interactive 3D Viewer
-An ipywidget.Output widget is used in combination with IPython.Display.Javascript to show the interactive webgl viewer.
+An ipywidget.Output widget is used in combination with IPython.Display.JavaScript to show the interactive webgl viewer.
 
 ```{code-cell} ipython3
 from IPython.display import display,Javascript
