@@ -865,7 +865,7 @@ void main() {
    gl_FragColor = v_color;
 }
 `;
-export const state={animate:false};
+export const state={animate:true};
 const hint=document.createElement("div");
 hint.innerText="Colors indicate surface normal directions: +xyz=rgb, -xyz=cmy \nDrag to rotate the view.";
 element.appendChild(hint);
@@ -1223,22 +1223,13 @@ display(output)
 ```
 
 ```{code-cell} ipython3
-display(Javascript("let {render,state}=modules['webgl-torus.js'];" 
-                   "if (!state.animate){"
-                   " requestAnimationFrame(render);"
-                   "}"))
-```
-
-```{code-cell} ipython3
 #display the same output widget again: A second, independent view.
 display(output)
 display(Javascript("let {camera,render,state,degToRad}=modules['webgl-torus.js'];" 
                    "camera.elev=degToRad(-20);"
                    "camera.azim=degToRad(-45);"  
-                   "if (!state.animate){"
-                   " state.animate=true;"
-                   " requestAnimationFrame(render);"
-                   "}"))
+                   "state.animate=false;"
+                   ))
 ```
 
 ```{code-cell} ipython3
