@@ -1223,6 +1223,13 @@ display(output)
 ```
 
 ```{code-cell} ipython3
+display(Javascript("let {render,state}=modules['webgl-torus.js'];" 
+                   "if (!state.animate){"
+                   " requestAnimationFrame(render);"
+                   "}"))
+```
+
+```{code-cell} ipython3
 #display the same output widget again: A second, independent view.
 display(output)
 display(Javascript("let {camera,render,state,degToRad}=modules['webgl-torus.js'];" 
