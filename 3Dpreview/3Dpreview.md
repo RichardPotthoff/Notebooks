@@ -1321,3 +1321,431 @@ download_btn.display()
 #save complete contents of vfs as zip file to disk:
 #with open('3Dpreview.zip','wb') as f: f.write(vfs.archive(filename_prefix='3Dpreview'))  
 ```
+
+# Trackpad example
+
++++
+
+## Source files
+
++++
+
+### trackpad.html
+
+```{code-cell} ipython3
+vfs["trackpad.html"]=r"""
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+  <title>Trackpad Test</title>
+</head>
+<body>
+  <script src="main.js" type="module"></script>
+</body>
+</html>
+"""
+```
+
+### main.js
+
+```{code-cell} ipython3
+vfs["main.js"]=r"""
+// main.js
+import { StateManager } from './stateManager.js';
+import { Trackpad } from './trackpad.js';
+import { Sliders } from './sliders.js';
+
+// Detect if we're in Jupyter
+const isJupyter = typeof element !== 'undefined';
+
+// Configuration
+const config = { minX: -40, maxX: 40, minY: -30, maxY: 30, width: 400, height: 300 };
+
+// Create or reuse StateManager
+const stateManager = new StateManager();
+
+// Create and append canvas
+const canvas = document.createElement('canvas');
+canvas.width = config.width;
+canvas.height = config.height;
+canvas.style.border = '1px solid black';
+const container = isJupyter ? element : document.body;
+container.appendChild(canvas);
+const ctx = canvas.getContext('2d');
+
+// Initialize state
+const initialState = { x: 0, y: 0 };
+stateManager.setState(initialState);
+
+// Initialize Trackpad
+const trackpad = new Trackpad({
+  element: canvas,
+  onPositionChange: (position) => {
+    stateManager.setState({ x: position.x, y: position.y });
+  },
+  minX: config.minX,
+  maxX: config.maxX,
+  minY: config.minY,
+  maxY: config.maxY
+});
+
+// Render function
+const render = () => {
+  const state = stateManager.getState();
+  const [canvasX, canvasY] = trackpad.scaleToCanvas(state.x, state.y);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.beginPath();
+  ctx.arc(canvasX, canvasY, 5, 0, 2 * Math.PI);
+  ctx.fillStyle = 'blue';
+  ctx.fill();
+};
+
+// UUIDs for Jupyter widgets
+export const uuids = {
+  x_slider: null,
+  y_slider: null,
+  state_text: null
+};
+
+// Initialize function for Jupyter
+export function initialize({state_text_uuid}) {
+  if (!isJupyter) return; // Only run in Jupyter
+
+  // Access widgets by UUID
+  const stateText = document.querySelector(`.${state_text_uuid} input`);
+
+  if (!stateText) {
+    console.error('Could not find Jupyter widgets');
+    return;
+  }
+
+  // Sync StateManager with stateText
+  function updateStateText() {
+    const state = stateManager.getState();
+    stateText.value = JSON.stringify(state);
+  }
+
+  stateManager.setState(JSON.parse(stateText.value));
+
+  stateManager.subscribe((state) => {
+    updateStateText();
+  });
+
+  const observer = new MutationObserver(() => {
+    const newState = JSON.parse(stateText.value);
+    stateManager.setState(newState);
+  });
+  observer.observe(stateText, { attributes: true, attributeFilter: ['value'] });
+}
+
+// Initialize UI based on environment
+if (!isJupyter) {
+  // Standalone HTML: Use HTML sliders
+  new Sliders(stateManager, config);
+  stateManager.subscribe(render);
+  render();
+} else {
+  // Jupyter: Wait for initialize() to be called after UUIDs are set
+  stateManager.subscribe(render);
+  render();
+}
+"""
+```
+
+### trackpad.js
+
+```{code-cell} ipython3
+vfs["trackpad.js"]=r"""
+// trackpad.js
+export class Trackpad {
+  constructor({
+    element,
+    onPositionChange,
+    minX = -40,
+    maxX = 40,
+    minY = -30,
+    maxY = 30
+  }) {
+    this.element = element; // External element (e.g., canvas) for input
+    this.onPositionChange = onPositionChange; // Callback for position updates
+    this.config = { minX, maxX, minY, maxY }; // Configurable ranges
+    this.isDragging = false;
+    this.currentCanvasX = 0;
+    this.currentCanvasY = 0;
+    this.bindEvents();
+  }
+
+  bindEvents() {
+    const start = (e, touch = false) => {
+      e.preventDefault();
+      this.isDragging = true;
+      this.updatePosition(e, touch);
+    };
+
+    const move = (e, touch = false) => {
+      e.preventDefault();
+      if (!this.isDragging) return;
+      this.updatePosition(e, touch);
+    };
+
+    const end = () => {
+      this.isDragging = false;
+    };
+
+    // Mouse events
+    this.element.addEventListener('mousedown', (e) => start(e));
+    this.element.addEventListener('mousemove', (e) => move(e));
+    this.element.addEventListener('mouseup', end);
+    this.element.addEventListener('mouseleave', end);
+
+    // Touch events
+    this.element.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 1) start(e, true);
+    }, { passive: false });
+    this.element.addEventListener('touchmove', (e) => {
+      if (e.touches.length === 1) move(e, true);
+    }, { passive: false });
+    this.element.addEventListener('touchend', end);
+    this.element.addEventListener('touchcancel', end);
+  }
+
+  updatePosition(e, touch = false) {
+    const rect = this.element.getBoundingClientRect();
+    let clientX = touch ? e.touches[0].clientX : e.clientX;
+    let clientY = touch ? e.touches[0].clientY : e.clientY;
+    const canvasX = clientX - rect.left;
+    const canvasY = clientY - rect.top;
+    this.currentCanvasX = Math.max(0, Math.min(canvasX, this.element.clientWidth));
+    this.currentCanvasY = Math.max(0, Math.min(canvasY, this.element.clientHeight));
+    const [scaledX, scaledY] = this.scaleFromCanvas(this.currentCanvasX, this.currentCanvasY);
+    this.onPositionChange({ x: scaledX, y: scaledY });
+  }
+
+  scaleFromCanvas(canvasX, canvasY) {
+    const { minX, maxX, minY, maxY } = this.config;
+    const width = this.element.clientWidth;
+    const height = this.element.clientHeight;
+    const x = minX + (canvasX / width) * (maxX - minX);
+    const y = minY + ((height - canvasY) / height) * (maxY - minY); // Invert Y-axis
+    return [x, y];
+  }
+
+  scaleToCanvas(x, y) {
+    const { minX, maxX, minY, maxY } = this.config;
+    const width = this.element.clientWidth;
+    const height = this.element.clientHeight;
+    const canvasX = ((x - minX) / (maxX - minX)) * width;
+    const canvasY = height - ((y - minY) / (maxY - minY)) * height; // Invert Y-axis
+    return [canvasX, canvasY];
+  }
+}
+"""
+```
+
+### slider.js
+
+```{code-cell} ipython3
+vfs["sliders.js"]=r"""
+// sliders.js
+export class Sliders {
+  constructor(stateManager, config) {
+    this.stateManager = stateManager;
+    this.config = config;
+    this.initialize();
+  }
+
+  initialize() {
+    this.container = document.createElement('div');
+    document.body.appendChild(this.container);
+
+    // X slider with label and value display (mimicking ipywidgets)
+    const xWrapper = document.createElement('div');
+    xWrapper.style.display = 'flex';
+    xWrapper.style.alignItems = 'center';
+    xWrapper.style.margin = '5px 0';
+
+    const xLabel = document.createElement('span');
+    xLabel.textContent = 'X: ';
+    xLabel.style.width = '50px';
+    xWrapper.appendChild(xLabel);
+
+    this.xSlider = document.createElement('input');
+    this.xSlider.type = 'range';
+    this.xSlider.min = this.config.minX;
+    this.xSlider.max = this.config.maxX;
+    this.xSlider.step = '0.1';
+    this.xSlider.style.width = '200px';
+    xWrapper.appendChild(this.xSlider);
+
+    this.xValue = document.createElement('span');
+    this.xValue.style.marginLeft = '10px';
+    this.xValue.style.width = '50px';
+    xWrapper.appendChild(this.xValue);
+
+    this.container.appendChild(xWrapper);
+
+    // Y slider with label and value display
+    const yWrapper = document.createElement('div');
+    yWrapper.style.display = 'flex';
+    yWrapper.style.alignItems = 'center';
+    yWrapper.style.margin = '5px 0';
+
+    const yLabel = document.createElement('span');
+    yLabel.textContent = 'Y: ';
+    yLabel.style.width = '50px';
+    yWrapper.appendChild(yLabel);
+
+    this.ySlider = document.createElement('input');
+    this.ySlider.type = 'range';
+    this.ySlider.min = this.config.minY;
+    this.ySlider.max = this.config.maxY;
+    this.ySlider.step = '0.1';
+    this.ySlider.style.width = '200px';
+    yWrapper.appendChild(this.ySlider);
+
+    this.yValue = document.createElement('span');
+    this.yValue.style.marginLeft = '10px';
+    this.yValue.style.width = '50px';
+    yWrapper.appendChild(this.yValue);
+
+    this.container.appendChild(yWrapper);
+
+    const initialState = this.stateManager.getState();
+    this.xSlider.value = initialState.x;
+    this.ySlider.value = initialState.y;
+    this.xValue.textContent = initialState.x.toFixed(1);
+    this.yValue.textContent = initialState.y.toFixed(1);
+
+    this.bindEvents();
+
+    this.stateManager.subscribe((state) => {
+      this.xSlider.value = state.x;
+      this.ySlider.value = state.y;
+      this.xValue.textContent = state.x.toFixed(1);
+      this.yValue.textContent = state.y.toFixed(1);
+    });
+  }
+
+  bindEvents() {
+    this.xSlider.addEventListener('input', () => {
+      const state = this.stateManager.getState();
+      this.stateManager.setState({ ...state, x: parseFloat(this.xSlider.value) });
+    });
+
+    this.ySlider.addEventListener('input', () => {
+      const state = this.stateManager.getState();
+      this.stateManager.setState({ ...state, y: parseFloat(this.ySlider.value) });
+    });
+  }
+}
+"""
+```
+
+### stateManager.js
+
+```{code-cell} ipython3
+vfs["stateManager.js"]=r"""
+// stateManager.js
+export class StateManager {
+  constructor() {
+    this.state = {};
+    this.subscribers = new Set();
+  }
+
+  getState() {
+    return { ...this.state };
+  }
+
+  setState(newState) {
+    // Only update if the state has actually changed
+    const hasChanged = Object.keys(newState).some(key => this.state[key] !== newState[key]);
+    if (!hasChanged) return;
+
+    this.state = { ...this.state, ...newState };
+    this.notifySubscribers();
+  }
+
+  subscribe(callback) {
+    this.subscribers.add(callback);
+    return () => this.subscribers.delete(callback);
+  }
+
+  notifySubscribers() {
+    this.subscribers.forEach(callback => callback(this.state));
+  }
+}
+"""
+```
+
+### Minification -> index2.html
+
+```{code-cell} ipython3
+ES6converter.process_html('trackpad.html',minify=True,output_file='index2.html')
+#copy index2.html from virtual file system to disk
+with open('index2.html','w') as f: f.write(vfs['index2.html'])
+```
+
+## Jupyter integration of Trackpad
+
+```{code-cell} ipython3
+import ipywidgets as widgets
+from IPython.display import Javascript, display
+import uuid
+import json
+
+state={"x":0,"y":0}
+# Create widgets for the trackpad
+x_slider = widgets.FloatSlider(value=0, min=-40, max=40, step=0.1, description='X:')
+y_slider = widgets.FloatSlider(value=0, min=-30, max=30, step=0.1, description='Y:')
+state_text = widgets.Text(value=json.dumps(state), disabled=True, layout={'display': 'none'})
+
+# Generate UUIDs with prefix
+state_text_id = "uuid" + str(uuid.uuid4()).replace('-', '')
+
+# Assign UUIDs to widgets
+state_text.add_class(state_text_id)
+
+# Display widgets
+output = widgets.Output()
+display(output, x_slider, y_slider, state_text)
+
+# Inject JavaScript to set UUIDs and initialize
+print()
+
+iife_script2=ES6converter.convertES6toIIFE('import "./main.js";',minify=True)
+js_code = iife_script2 + "window.modules['main.js'].initialize({state_text_id:'"+state_text_id+"'});"
+
+with output:
+    display(Javascript(js_code))
+
+# Python handler for state changes
+def on_x_slider_change(change):
+    state=json.loads(state_text.value)
+    state['x'] = change['new']
+    state_text.value = json.dumps(state)
+    
+def on_y_slider_change(change):
+    state=json.loads(state_text.value)
+    state['x'] = change['new']
+    state_text.value = json.dumps(state)
+
+def on_state_change(change):
+    state = json.loads(change['new'])
+    x_slider.value = state['x']
+    y_slider.value = state['y']
+
+x_slider.observe(on_x_slider_change, names='value')
+y_slider.observe(on_y_slider_change, names='value')
+state_text.observe(on_state_change, names='value')
+```
+
+```{code-cell} ipython3
+def on_state_change(change):
+    state = eval(change['new'])  # Parse JSON string to dict
+    x_slider.value = state['x']
+    y_slider.value = state['y']
+
+state_text.observe(on_state_change, names='value')
+```
