@@ -1240,6 +1240,11 @@ print('"webgl-torus.html" with ES6 module references  -->  stand alone minified 
 ES6converter.process_html('webgl-torus.html',minify=True,output_file='index.html')
 ```
 
+```{code-cell} ipython3
+with open('index.html','w') as f:
+    f.write(vfs['index.html'])
+```
+
 ## Interactive 3D Viewer
 An ipywidget.Output widget is used in combination with IPython.Display.JavaScript to show the interactive webgl viewer.
 
@@ -1264,12 +1269,9 @@ display(Javascript("let {camera,render,state,degToRad}=modules['webgl-torus.js']
 ```
 
 ```{code-cell} ipython3
-with open('index.html','w') as f:
-    f.write(vfs['index.html'])
-```
-
-```{code-cell} ipython3
-#data=vfs.archive('3Dpreview')
+display(Javascript("let {camera,render,state,degToRad}=modules['webgl-torus.js'];" 
+                   "requestAnimationFrame(render);"
+                   ))
 ```
 
 ```{code-cell} ipython3
