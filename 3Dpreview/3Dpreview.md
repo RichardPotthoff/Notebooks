@@ -1241,8 +1241,8 @@ ES6converter.process_html('webgl-torus.html',minify=True,output_file='index.html
 ```
 
 ```{code-cell} ipython3
-with open('index.html','w') as f:
-    f.write(vfs['index.html'])
+#copy index.html from virtual file system to disk
+#with open('index.html','w') as f: f.write(vfs['index.html'])
 ```
 
 ## Interactive 3D Viewer
@@ -1318,6 +1318,6 @@ download_btn.display()
 ```
 
 ```{code-cell} ipython3
-#x=vfs.archive(filename_prefix='3Dpreview')
-#with open('3Dpreview.zip','wb') as f: f.write(x)  
+#save complete contents of vfs as zip file to disk:
+#with open('3Dpreview.zip','wb') as f: f.write(vfs.archive(filename_prefix='3Dpreview'))  
 ```
