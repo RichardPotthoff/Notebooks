@@ -1259,6 +1259,7 @@ display(Javascript("let {camera,render,state,degToRad}=modules['webgl-torus.js']
                    "camera.elev=degToRad(-20);"
                    "camera.azim=degToRad(-45);"  
                    "state.animate=false;"
+                   "requestAnimationFrame(render);"
                    ))
 ```
 
