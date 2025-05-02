@@ -1364,7 +1364,7 @@ const isJupyter = typeof element !== 'undefined';
 const config = { minX: -40, maxX: 40, minY: -30, maxY: 30, width: 400, height: 300 };
 
 // Create or reuse StateManager
-const stateManager = new StateManager();
+const valxyManager = new StateManager();
 
 // Create and append canvas
 const canvas = document.createElement('canvas');
@@ -1376,14 +1376,14 @@ container.appendChild(canvas);
 const ctx = canvas.getContext('2d');
 
 // Initialize state
-const initialState = { x: 0, y: 0 };
-stateManager.setState(initialState);
+const initialState = {x:0, y:0};
+valxyManager.setState(initialState);
 
 // Initialize Trackpad
 const trackpad = new Trackpad({
   element: canvas,
   onPositionChange: (position) => {
-    stateManager.setState({ x: position.x, y: position.y });
+    valxyManager.setState({ x: position.x, y: position.y });
   },
   minX: config.minX,
   maxX: config.maxX,
@@ -1393,8 +1393,8 @@ const trackpad = new Trackpad({
 
 // Render function
 const render = () => {
-  const state = stateManager.getState();
-  const [canvasX, canvasY] = trackpad.scaleToCanvas(state.x, state.y);
+  const valxy=valxyManager.getState();
+  const [canvasX, canvasY] = trackpad.scaleToCanvas(valxy.x, valxy.y);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.beginPath();
   ctx.arc(canvasX, canvasY, 5, 0, 2 * Math.PI);
@@ -1402,53 +1402,55 @@ const render = () => {
   ctx.fill();
 };
 
-// UUIDs for Jupyter widgets
-export const uuids = {
-  x_slider: null,
-  y_slider: null,
-  state_text: null
-};
-
 // Initialize function for Jupyter
-export function initialize({state_text_uuid}) {
+export function initialize({valxy_widget_id}) {
   if (!isJupyter) return; // Only run in Jupyter
 
   // Access widgets by UUID
-  const stateText = document.querySelector(`.${state_text_uuid} input`);
-
-  if (!stateText) {
-    console.error('Could not find Jupyter widgets');
-    return;
+  const valxyWidget = document.querySelector(`.${valxy_widget_id} input`);
+  if (!valxyWidget){
+     alert("valxyWidget not found in DOM!");
+     return;
   }
-
+  
   // Sync StateManager with stateText
-  function updateStateText() {
-    const state = stateManager.getState();
-    stateText.value = JSON.stringify(state);
+  function updateValxy(valxy) {
+    valxyWidget.value = JSON.stringify(valxy);
+    const changeEvent = new Event('change', { bubbles: true });
+    valxyWidget.dispatchEvent(changeEvent);
+    const inputEvent = new Event('input', { bubbles: true });
+    valxyWidget.dispatchEvent(inputEvent);
   }
 
-  stateManager.setState(JSON.parse(stateText.value));
-
-  stateManager.subscribe((state) => {
-    updateStateText();
+  valxyManager.subscribe((valxy) => {
+    updateValxy(valxy);
   });
-
+  
+  valxyManager.setState(JSON.parse(valxyWidget.value));
+  
   const observer = new MutationObserver(() => {
-    const newState = JSON.parse(stateText.value);
-    stateManager.setState(newState);
+    alert("valxyWidget: "+valxyWidget.value); 
+    const newValxy = JSON.parse(valxyWidget.value);
+    
+    valxyManager.setState(newValxy);
   });
-  observer.observe(stateText, { attributes: true, attributeFilter: ['value'] });
+  observer.observe(valxyWidget, { attributes: true, attributeFilter: ['value'] });
+
+    // Poll for Python → JavaScript updates
+    setInterval(() => {
+       valxyManager.setState(JSON.parse(valxyWidget.value))
+    }, 100);
 }
 
 // Initialize UI based on environment
 if (!isJupyter) {
   // Standalone HTML: Use HTML sliders
-  new Sliders(stateManager, config);
-  stateManager.subscribe(render);
+  new Sliders(valxyManager, config);
+  valxyManager.subscribe(render);
   render();
 } else {
   // Jupyter: Wait for initialize() to be called after UUIDs are set
-  stateManager.subscribe(render);
+  valxyManager.subscribe(render);
   render();
 }
 """
@@ -1695,57 +1697,61 @@ from IPython.display import Javascript, display
 import uuid
 import json
 
-state={"x":0,"y":0}
+initial_valxy={"x":0,"y":0}
 # Create widgets for the trackpad
 x_slider = widgets.FloatSlider(value=0, min=-40, max=40, step=0.1, description='X:')
 y_slider = widgets.FloatSlider(value=0, min=-30, max=30, step=0.1, description='Y:')
-state_text = widgets.Text(value=json.dumps(state), disabled=True, layout={'display': 'none'})
+valxy_widget = widgets.Text(value=json.dumps(initial_valxy), layout={'display': 'none'})
 
 # Generate UUIDs with prefix
-state_text_id = "uuid" + str(uuid.uuid4()).replace('-', '')
+valxy_widget_id = "uuid" + str(uuid.uuid4()).replace('-', '')
 
 # Assign UUIDs to widgets
-state_text.add_class(state_text_id)
+valxy_widget.add_class(valxy_widget_id)
 
 # Display widgets
 output = widgets.Output()
-display(output, x_slider, y_slider, state_text)
 
 # Inject JavaScript to set UUIDs and initialize
 print()
 
 iife_script2=ES6converter.convertES6toIIFE('import "./main.js";',minify=True)
-js_code = iife_script2 + "window.modules['main.js'].initialize({state_text_id:'"+state_text_id+"'});"
+js_code = iife_script2 + "window.modules['main.js'].initialize({valxy_widget_id:'"+valxy_widget_id+"'});"
 
 with output:
     display(Javascript(js_code))
 
 # Python handler for state changes
 def on_x_slider_change(change):
-    state=json.loads(state_text.value)
-    state['x'] = change['new']
-    state_text.value = json.dumps(state)
+    valxy=json.loads(valxy_widget.value)
+    valxy['x'] = change['new']
+    valxy_widget.value = json.dumps(valxy)
     
 def on_y_slider_change(change):
-    state=json.loads(state_text.value)
-    state['x'] = change['new']
-    state_text.value = json.dumps(state)
+    valxy=json.loads(valxy_widget.value)
+    valxy['y'] = change['new']
+    valxy_widget.value = json.dumps(valxy)
 
-def on_state_change(change):
-    state = json.loads(change['new'])
-    x_slider.value = state['x']
-    y_slider.value = state['y']
-
+def on_valxy_change(change):
+    try:
+      valxy = json.loads(change['new'])
+      x_slider.value = valxy['x']
+      y_slider.value = valxy['y']
+      valxy_widget.value = json.dumps(valxy)
+    except (json.JSONDecodeError, KeyError):
+      pass
+        
 x_slider.observe(on_x_slider_change, names='value')
 y_slider.observe(on_y_slider_change, names='value')
-state_text.observe(on_state_change, names='value')
+valxy_widget.observe(on_valxy_change, names='value')
+
+display(valxy_widget, output, x_slider, y_slider)
 ```
 
 ```{code-cell} ipython3
-def on_state_change(change):
-    state = eval(change['new'])  # Parse JSON string to dict
-    x_slider.value = state['x']
-    y_slider.value = state['y']
+valxy_widget.value
+```
 
-state_text.observe(on_state_change, names='value')
+```{code-cell} ipython3
+
 ```
