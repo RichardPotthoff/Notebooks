@@ -1,2 +1,5 @@
 matplotlib
 sympy
+anywidget
+ipywidgets
+jupyterlab_widgets
