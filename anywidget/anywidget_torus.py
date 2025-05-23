@@ -54,6 +54,7 @@ def _():
     import ipywidgets as widgets
     import anywidget
     import traitlets
+    from cmath import inf,exp,pi
 
     # Custom StringIO class to handle VFS updates
     class VFSStringIO(io.StringIO):
@@ -192,7 +193,17 @@ def _():
 
             # Get the zip data as bytes and return
             return zip_buffer.getvalue()
-    return SimpleVFS, anywidget, base64, perf_counter, sys, traitlets
+    return (
+        SimpleVFS,
+        anywidget,
+        base64,
+        exp,
+        inf,
+        perf_counter,
+        pi,
+        sys,
+        traitlets,
+    )
 
 
 @app.cell(hide_code=True)
@@ -306,7 +317,7 @@ def _(vfs):
           return '\n'.join(result)
 
       exports={}
-      export_pattern = r'(?=^|;)\s*(export\s+(?P<export_default>default\s+)?(?:(?P<export_type>function|const|let|var|class)\s+)?(?P<export_name>\w+)\s*)'
+      export_pattern = r'(?=^|;)\s*(export\s+(?P<export_default>default\s+)?(?:(?P<export_type>function\*?|const|let|var|class)\s+)?(?P<export_name>\w+)\s*)'
 
       def export_callback(match):
           groupdict=match.groupdict()
@@ -489,203 +500,431 @@ def _(mo):
     return
 
 
-@app.cell(hide_code=True)
-def _(sys, vfs):
-    import sympy as sp
-    (theta, phi, d, dx, dy, dz, x_t, y_t, z_t) = sp.symbols('theta,phi,d,dx,dy,dz,x_t,y_t,z_t')
-    Matrix = sp.Matrix
-    sin = sp.sin
-    cos = sp.cos
-    tan = sp.tan
-    pi = sp.pi
-    pi_2 = sp.pi / 2
-    deg = sp.pi / 180
-
-    def tLat(v):
-        (dx, dy, dz, *_) = v
-        return sp.Matrix(sp.BlockMatrix([[sp.eye(3), sp.Matrix([dx, dy, dz])], [sp.zeros(1, 3), sp.ones(1, 1)]]))
-
-    def xRot(alpha):
-        return sp.diag(sp.rot_axis1(-alpha), 1)
-
-    def yRot(alpha):
-        return sp.diag(sp.rot_axis2(-alpha), 1)
-
-    def zRot(alpha):
-        return sp.diag(sp.rot_axis3(-alpha), 1)
-
-    def scal(v):
-        (sx, sy, sz, *_) = v
-        return sp.diag(sx, sy, sz, 1)
-
-    def persp(fov, aspR, near, far):
-        _f = tan(pi / 2 - fov / 2)
-        nfInv = 1 / (near - far)
-        return Matrix([[_f / aspR, 0, 0, 0], [0, _f, 0, 0], [0, 0, (near + far) * nfInv, near * far * nfInv * 2], [0, 0, -1, 0]])
-
-    def rot_vector(V, theta=None):
-        absV = abs(V)
-        if theta == None:
-            theta = absV
-        (x, y, z, *_) = V
-        c = cos(theta)
-        s = sin(theta)
-        v = Matrix([x, y, z])
-        return (1 - c) * v @ v.T + c * sp.eye(3) + s * Matrix([[0, -z, y], [z, 0, -x], [-y, x, 0]])
-
-    def vRot(V, theta):
-        return sp.diag(rot_vector(V, theta), 1)
-    Mx = xRot(phi)
-    Mz = zRot(theta)
-    Mt = tLat([dx, dy, dz])
-    column_major = False
-
-    def ij_to_flat(i, j):
-        return i + j * 4 if column_major else i * 4 + j
-
-    def flat_to_ij(l):
-        (i, j) = divmod(l, 4)
-        return (j, i) if column_major else (i, j)
-
-    def print_mMul(output=sys.stdout):
-        print('export function mMul(')
-        print('    ', ',\n     '.join(['[' + ', '.join([f'{c}{i}{j}' for l in range(16) for (i, j) in (flat_to_ij(l),)]) + ']' for c in 'ba']), ') {\n  const C = new Float32Array(16);', file=output, sep='')
-        for l in range(16):
-            (i, j) = flat_to_ij(l)
-            print(f'  C[{l}] =', ' + '.join([f'b{i}{k}*a{k}{j}' for k in range(4)]), ';', file=output, sep='')
-        print('  return C;\n}', file=output, sep='')
-
-    def write_ES6_module(output, column_major=False):
-
-        def flatten(A):
-            return [aij for aij in (A.T if column_major else A)]
-
-        def ij_to_l(i, j):
-            l = i + j * 4 if column_major else i * 4 + j
-            return l
-        if column_major:
-            print('// Column major matrix functions', file=output, sep='')
-        else:
-            print('// Row major matrix functions', file=output, sep='')
-        print('const {sin,cos,sqrt,tan,PI}=Math,\n       pi=PI;\n', file=output, sep='')
-        for fRot in (xRot, yRot, zRot):
-            print('export function ' + fRot.__name__ + '(a){\n  const s=sin(a);\n  const c=cos(a);\n  return ', flatten(fRot(phi).subs({sin(phi): 's', cos(phi): 'c'})), ';\n}\n', file=output, sep='')
-        (x, y, z, theta, s, c, c1) = sp.symbols('x,y,z,theta,s,c,c1')
-        print('export function vRot([x,y,z],theta){\n  x??=0; y??=0; z??=0;\n  const length = sqrt(x*x + y*y + z*z);\n  if (length==0) {\n    if (theta===undefined){ \n       return [1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1];\n    }\n    else {\n       throw new Error("Rotation axis vector cannot be zero if a rotation angle is specified!");\n    }\n  }\n  if (theta===undefined) theta=length;\n  const c=cos(theta);\n  const c1=1-c;\n  const s=sin(theta);\n  x/=length;\n  y/=length;\n  z/=length;\n  return', flatten(vRot(Matrix([x, y, z]), theta).subs({sin(theta): s, 1 - cos(theta): c1, -c1 + 1: c})), ';\n}\n', file=output, sep='')
-        print('export function tLat([tx,ty,tz]){\n  tx??=0; ty??=0; tz??=0;\n  return ', flatten(tLat(['tx', 'ty', 'tz'])), ';\n}\n', file=output, sep='')
-        print('export function scal([sx, sy, sz]) {\n  sx??=1; sy??=1; sz??=1;\n  return ', flatten(scal(['sx', 'sy', 'sz'])), ';\n}\n', file=output, sep='')
-        T = [''] * 16
-        for i in range(4):
-            for j in range(4):
-                T[ij_to_l(i, j)] = f'A[{ij_to_l(j, i)}]'
-        print('export function T(A){\n  return new Float32Array([', ', '.join(T), ']);\n}\n', file=output, sep='')
-        print('export function mMul(B,A){\n  const C=new Array(16);\n  let sum;\n  for (let i=0;i<4;++i)\n    for (let j=0;j<4;++j){\n      sum=0;\n      for (let k=0;k<4;++k)\n        sum+= B[', ij_to_l(*sp.symbols('i,k')), '] * A[', ij_to_l(*sp.symbols('k,j')), '];\n      C[', ij_to_l(*sp.symbols('i,j')), '] = sum;\n    }\n  return C;\n}\n', file=output, sep='')
-        print('export function vMul(A,[x0,x1,x2,x3]){\n  x0??=0; x1??=0; x2??=0; x3??=0;\n  return new Float32Array([', ', '.join(['+'.join([f'A[{ij_to_l(i, k)}]*x{k}' for k in range(4)]) for i in range(4)]), ']);\n}\n', file=output, sep='')
-        (fov, aspR, near, far, _f, nfInv) = sp.symbols('fov,aspR,near,far,f,nfInv')
-        cot = sp.cot
-        print('export function  persp(fov, aspR, near, far) {\n  const f = tan(pi * 0.5 - 0.5 * fov);\n  const nfInv = 1.0 / (near - far);\n  return ', flatten(persp(fov, aspR, near, far).subs({cot(fov / 2): _f, near - far: 1 / nfInv})), ';\n}\n', file=output, sep='')
-        if column_major:
-            print('export function cMaj(A){return A;}\nexport function rMaj(A){return T(A);}\n', file=output, sep='')
-        else:
-            print('export function cMaj(A){return T(A);}\nexport function rMaj(A){return A;}\n', file=output, sep='')
-
-    def camMat(targ, azim, elev, d):
-        return tLat([0, 0, -d]) @ xRot(elev - pi / 2) @ zRot(-azim - pi / 2) @ tLat(-sp.Matrix(targ))
-
-    def icamMat(targ, azim, elev, d):
-        return tLat(sp.Matrix(targ)) @ zRot(-azim - pi / 2).T @ xRot(elev - pi / 2).T @ tLat([0, 0, d])
-    (a00, a01, a02, a10, a11, a12, a20, a21, a22) = sp.symbols('a00,a01,a02,a10,a11,a12,a20,a21,a22')
-
-    def icamMat1(targ, camMat, d):
-        return sp.Matrix(sp.BlockMatrix([[camMat[:3, :3].T, d * camMat[2, :3].T + sp.Matrix(targ)], [sp.zeros(1, 3), sp.ones(1, 1)]]))
-
-    def print_camMat(output=sys.stdout, column_major=True):
-        (tx, ty, tz, azim, elev, d) = sp.symbols('tx,ty,tz,azim,elev,d')
-
-        def flatten(A):
-            return [aij for aij in (A.T if column_major else A)]
-        print('export function camMat([tx,ty,tz],azim,elev,d){\n  // The function camMat calculates the camera matrix (similar to lookAt, but with different input parameters)\n  // tx,ty,tz: target coordinates\n  // azim: azimuth angle in radians\n  // elev: elevation angle in radians\n  // d: distance of camera from target. \n  tx??=0; ty??=0; tz??=0; d??=0;\n  const s=sin(azim),\n        c=cos(azim),\n        se=sin(elev),\n        ce=cos(elev);\n  return new Float32Array(', flatten(camMat([tx, ty, tz], azim, elev, d).subs({sin(elev): 'se', cos(elev): 'ce', sin(azim): 's', cos(azim): 'c'})), ')\n};\n', file=output, sep='')
-
-    def camPos(targ, camMat, dist):
-        ex = camMat[2, 0]
-        ey = camMat[2, 1]
-        ez = camMat[2, 2]
-        (tx, ty, tz, *_) = targ
-        return [tx + ex * dist, ty + ey * dist, tz + ez * dist, 1]
-
-    def print_camPos(output=sys.stdout, column_major=True):
-
-        def ij_to_l(i, j):
-            l = i + j * 4 if column_major else i * 4 + j
-            return l
-        print('export function camPos(targ,camMat,d){\n  //Camera position in world coordinates  // tx,ty,tz: target coordinates\n  // camMat: camera matrix\n  // d: distance of camera from target. \n  const [tx,ty,tz]=targ;\n  const ex=camMat[', ij_to_l(2, 0), '], ey=camMat[', ij_to_l(2, 1), '], ez=camMat[', ij_to_l(2, 2), '];\n  return [tx+ex*d,ty+ey*d,tz+ez*d,1];\n};\n', file=output, sep='')
-
-    def print_icamMat(output=sys.stdout, column_major=True):
-
-        def ij_to_l(i, j):
-            l = i + j * 4 if column_major else i * 4 + j
-            return l
-        iC = ['0'] * 16
-        iC[15] = '1'
-        for i in range(3):
-            for j in range(3):
-                iC[ij_to_l(i, j)] = f'C[{ij_to_l(j, i)}]'
-            iC[ij_to_l(i, 3)] = f'C[{ij_to_l(2, i)}]*d+t[{i}]??0'
-        print('export function icamMat(t,C,d){\n  // The function icamMat calculates the inverse of the camera matrix for a given camera matrix\n  // t: target coordinates\n  // C: camera matrix\n  // d: distance of camera from target. \n  d??=0;\n  return new Float32Array([', ', '.join(iC), '])\n};\n', file=output, sep='')
-    with vfs.open('m4_cMaj.js', 'w') as _f:
-        write_ES6_module(_f, column_major=True)
-        print_camMat(_f, column_major=True)
-        print_icamMat(_f, column_major=True)
-        print_camPos(_f, column_major=True)
-    m4_cMaj_js=vfs['m4_cMaj.js']
-    with vfs.open('m4_rMaj.js', 'w') as _f:
-        write_ES6_module(_f, column_major=False)
-        print_camMat(_f, column_major=False)
-        print_icamMat(_f, column_major=False)
-        print_camPos(_f, column_major=False)
-    m4_rMaj_js=vfs['m4_rMaj.js']
-    camera = dict(fov=30 * deg, target=[0, 0, 0], azim=30 * deg, elev=40 * deg, dist=1000)
-    a = {0: 0.8660253882408142, 1: -0.3830222189426422, 10: -0.7660444378852844, 11: 0, 12: 0, 13: 0, 14: -1000, 15: 1, 2: -0.3213938176631927, 3: 0, 4: -0.5, 5: -0.663413941860199, 6: -0.5566704273223877, 7: 0, 8: 0, 9: 0.6427876353263855}
-    b = [-0.4999999999999998, -0.5566703992264195, 0.6634139481689384, 0, 0.8660254037844387, -0.3213938048432696, 0.3830222215594889, 0, 0, 0.766044443118978, 0.6427876096865394, 0, 0, 0, -1000, 1]
-    (tx, ty, tz, azim, elev, d) = sp.symbols('tx,ty,tz,azim,elev,d')
-    cm = camMat([tx, ty, tz], azim, elev, d).subs({sin(elev): 'se', cos(elev): 'ce', sin(azim): 's', cos(azim): 'c'})
-    icm = icamMat([tx, ty, tz], azim, elev, d).subs({sin(elev): 'se', cos(elev): 'ce', sin(azim): 's', cos(azim): 'c'})
-    print('camera matrix:')
-    sp.pprint(cm)
-    print()
-    print('inverse camera matrix:')
-    sp.pprint(icm)
-    print()
-    print('icamMat1([tx,ty,tz],cm,d):')
-    sp.pprint(icamMat1([tx, ty, tz], cm, d))
-    cm = sp.Matrix([[a00, a01, a02], [a10, a11, a12], [a20, a21, a22]])
-    print()
-    print('icamMat1([tx,ty,tz],aij,d):')
-    sp.pprint(icamMat1([tx, ty, tz], cm, d))
-    (tx, ty, tz, azim, elev, d) = (0, 0, 0, camera['azim'], camera['elev'], camera['dist'])
-    cm = camMat([tx, ty, tz], azim, elev, d)
-    icm = icamMat([tx, ty, tz], azim, elev, d)
-    print()
-    print('(cm.inv() @s p.Matrix([0,0,0,1]) ).evalf():')
-    sp.pprint((cm.inv() @ sp.Matrix([0, 0, 0, 1])).evalf())
-    print()
-    print('camPos([tx,ty,tz],cm.evalf(),d):')
-    print(camPos([tx, ty, tz], cm.evalf(), d))
-    print()
-    print('check that (cm @ icm).evalf()  = I :')
-    sp.pprint((cm @ icm).evalf())
-    return m4_cMaj_js, m4_rMaj_js
+@app.cell
+def _(mo):
+    generate_m4_js_btn=mo.ui.run_button(label="generate m4_cMaj.js")
+    return (generate_m4_js_btn,)
 
 
 @app.cell
-def _(vfs):
-    print(vfs["m4_cMaj.js"])
-    return
+def _(generate_m4_js_btn, mo, sys, vfs):
+    mo.stop(not generate_m4_js_btn.value,generate_m4_js_btn)
 
+    def _():
+        import sympy as sp
 
-@app.cell
-def _(vfs):
-    list(vfs.keys())
+        (theta, phi, d, dx, dy, dz, x_t, y_t, z_t) = sp.symbols(
+            "theta,phi,d,dx,dy,dz,x_t,y_t,z_t"
+        )
+        Matrix = sp.Matrix
+        sin = sp.sin
+        cos = sp.cos
+        tan = sp.tan
+        pi = sp.pi
+        pi_2 = sp.pi / 2
+        deg = sp.pi / 180
+
+        def tLat(v):
+            (dx, dy, dz, *_) = v
+            return sp.Matrix(
+                sp.BlockMatrix(
+                    [
+                        [sp.eye(3), sp.Matrix([dx, dy, dz])],
+                        [sp.zeros(1, 3), sp.ones(1, 1)],
+                    ]
+                )
+            )
+
+        def xRot(alpha):
+            return sp.diag(sp.rot_axis1(-alpha), 1)
+
+        def yRot(alpha):
+            return sp.diag(sp.rot_axis2(-alpha), 1)
+
+        def zRot(alpha):
+            return sp.diag(sp.rot_axis3(-alpha), 1)
+
+        def scal(v):
+            (sx, sy, sz, *_) = v
+            return sp.diag(sx, sy, sz, 1)
+
+        def persp(fov, aspR, near, far):
+            _f = tan(pi / 2 - fov / 2)
+            nfInv = 1 / (near - far)
+            return Matrix(
+                [
+                    [_f / aspR, 0, 0, 0],
+                    [0, _f, 0, 0],
+                    [0, 0, (near + far) * nfInv, near * far * nfInv * 2],
+                    [0, 0, -1, 0],
+                ]
+            )
+
+        def rot_vector(V, theta=None):
+            absV = abs(V)
+            if theta == None:
+                theta = absV
+            (x, y, z, *_) = V
+            c = cos(theta)
+            s = sin(theta)
+            v = Matrix([x, y, z])
+            return (
+                (1 - c) * v @ v.T
+                + c * sp.eye(3)
+                + s * Matrix([[0, -z, y], [z, 0, -x], [-y, x, 0]])
+            )
+
+        def vRot(V, theta):
+            return sp.diag(rot_vector(V, theta), 1)
+
+        Mx = xRot(phi)
+        Mz = zRot(theta)
+        Mt = tLat([dx, dy, dz])
+        column_major = False
+
+        def ij_to_flat(i, j):
+            return i + j * 4 if column_major else i * 4 + j
+
+        def flat_to_ij(l):
+            (i, j) = divmod(l, 4)
+            return (j, i) if column_major else (i, j)
+
+        def print_mMul(output=sys.stdout):
+            print("export function mMul(")
+            print(
+                "    ",
+                ",\n     ".join(
+                    [
+                        "["
+                        + ", ".join(
+                            [
+                                f"{c}{i}{j}"
+                                for l in range(16)
+                                for (i, j) in (flat_to_ij(l),)
+                            ]
+                        )
+                        + "]"
+                        for c in "ba"
+                    ]
+                ),
+                ") {\n  const C = new Float32Array(16);",
+                file=output,
+                sep="",
+            )
+            for l in range(16):
+                (i, j) = flat_to_ij(l)
+                print(
+                    f"  C[{l}] =",
+                    " + ".join([f"b{i}{k}*a{k}{j}" for k in range(4)]),
+                    ";",
+                    file=output,
+                    sep="",
+                )
+            print("  return C;\n}", file=output, sep="")
+
+        def write_ES6_module(output, column_major=False):
+            def flatten(A):
+                return [aij for aij in (A.T if column_major else A)]
+
+            def ij_to_l(i, j):
+                l = i + j * 4 if column_major else i * 4 + j
+                return l
+
+            if column_major:
+                print("// Column major matrix functions", file=output, sep="")
+            else:
+                print("// Row major matrix functions", file=output, sep="")
+            print(
+                "const {sin,cos,sqrt,tan,PI}=Math,\n       pi=PI;\n",
+                file=output,
+                sep="",
+            )
+            for fRot in (xRot, yRot, zRot):
+                print(
+                    "export function "
+                    + fRot.__name__
+                    + "(a){\n  const s=sin(a);\n  const c=cos(a);\n  return ",
+                    flatten(fRot(phi).subs({sin(phi): "s", cos(phi): "c"})),
+                    ";\n}\n",
+                    file=output,
+                    sep="",
+                )
+            (x, y, z, theta, s, c, c1) = sp.symbols("x,y,z,theta,s,c,c1")
+            print(
+                'export function vRot([x,y,z],theta){\n  x??=0; y??=0; z??=0;\n  const length = sqrt(x*x + y*y + z*z);\n  if (length==0) {\n    if (theta===undefined){ \n       return [1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1];\n    }\n    else {\n       throw new Error("Rotation axis vector cannot be zero if a rotation angle is specified!");\n    }\n  }\n  if (theta===undefined) theta=length;\n  const c=cos(theta);\n  const c1=1-c;\n  const s=sin(theta);\n  x/=length;\n  y/=length;\n  z/=length;\n  return',
+                flatten(
+                    vRot(Matrix([x, y, z]), theta).subs(
+                        {sin(theta): s, 1 - cos(theta): c1, -c1 + 1: c}
+                    )
+                ),
+                ";\n}\n",
+                file=output,
+                sep="",
+            )
+            print(
+                "export function tLat([tx,ty,tz]){\n  tx??=0; ty??=0; tz??=0;\n  return ",
+                flatten(tLat(["tx", "ty", "tz"])),
+                ";\n}\n",
+                file=output,
+                sep="",
+            )
+            print(
+                "export function scal([sx, sy, sz]) {\n  sx??=1; sy??=1; sz??=1;\n  return ",
+                flatten(scal(["sx", "sy", "sz"])),
+                ";\n}\n",
+                file=output,
+                sep="",
+            )
+            T = [""] * 16
+            for i in range(4):
+                for j in range(4):
+                    T[ij_to_l(i, j)] = f"A[{ij_to_l(j, i)}]"
+            print(
+                "export function T(A){\n  return new Float32Array([",
+                ", ".join(T),
+                "]);\n}\n",
+                file=output,
+                sep="",
+            )
+            print(
+                "export function mMul(B,A){\n  const C=new Array(16);\n  let sum;\n  for (let i=0;i<4;++i)\n    for (let j=0;j<4;++j){\n      sum=0;\n      for (let k=0;k<4;++k)\n        sum+= B[",
+                ij_to_l(*sp.symbols("i,k")),
+                "] * A[",
+                ij_to_l(*sp.symbols("k,j")),
+                "];\n      C[",
+                ij_to_l(*sp.symbols("i,j")),
+                "] = sum;\n    }\n  return C;\n}\n",
+                file=output,
+                sep="",
+            )
+            print(
+                "export function vMul(A,[x0,x1,x2,x3]){\n  x0??=0; x1??=0; x2??=0; x3??=0;\n  return new Float32Array([",
+                ", ".join(
+                    [
+                        "+".join([f"A[{ij_to_l(i, k)}]*x{k}" for k in range(4)])
+                        for i in range(4)
+                    ]
+                ),
+                "]);\n}\n",
+                file=output,
+                sep="",
+            )
+            (fov, aspR, near, far, _f, nfInv) = sp.symbols(
+                "fov,aspR,near,far,f,nfInv"
+            )
+            cot = sp.cot
+            print(
+                "export function  persp(fov, aspR, near, far) {\n  const f = tan(pi * 0.5 - 0.5 * fov);\n  const nfInv = 1.0 / (near - far);\n  return ",
+                flatten(
+                    persp(fov, aspR, near, far).subs(
+                        {cot(fov / 2): _f, near - far: 1 / nfInv}
+                    )
+                ),
+                ";\n}\n",
+                file=output,
+                sep="",
+            )
+            if column_major:
+                print(
+                    "export function cMaj(A){return A;}\nexport function rMaj(A){return T(A);}\n",
+                    file=output,
+                    sep="",
+                )
+            else:
+                print(
+                    "export function cMaj(A){return T(A);}\nexport function rMaj(A){return A;}\n",
+                    file=output,
+                    sep="",
+                )
+
+        def camMat(targ, azim, elev, d):
+            return (
+                tLat([0, 0, -d])
+                @ xRot(elev - pi / 2)
+                @ zRot(-azim - pi / 2)
+                @ tLat(-sp.Matrix(targ))
+            )
+
+        def icamMat(targ, azim, elev, d):
+            return (
+                tLat(sp.Matrix(targ))
+                @ zRot(-azim - pi / 2).T
+                @ xRot(elev - pi / 2).T
+                @ tLat([0, 0, d])
+            )
+
+        (a00, a01, a02, a10, a11, a12, a20, a21, a22) = sp.symbols(
+            "a00,a01,a02,a10,a11,a12,a20,a21,a22"
+        )
+
+        def icamMat1(targ, camMat, d):
+            return sp.Matrix(
+                sp.BlockMatrix(
+                    [
+                        [camMat[:3, :3].T, d * camMat[2, :3].T + sp.Matrix(targ)],
+                        [sp.zeros(1, 3), sp.ones(1, 1)],
+                    ]
+                )
+            )
+
+        def print_camMat(output=sys.stdout, column_major=True):
+            (tx, ty, tz, azim, elev, d) = sp.symbols("tx,ty,tz,azim,elev,d")
+
+            def flatten(A):
+                return [aij for aij in (A.T if column_major else A)]
+
+            print(
+                "export function camMat([tx,ty,tz],azim,elev,d){\n  // The function camMat calculates the camera matrix (similar to lookAt, but with different input parameters)\n  // tx,ty,tz: target coordinates\n  // azim: azimuth angle in radians\n  // elev: elevation angle in radians\n  // d: distance of camera from target. \n  tx??=0; ty??=0; tz??=0; d??=0;\n  const s=sin(azim),\n        c=cos(azim),\n        se=sin(elev),\n        ce=cos(elev);\n  return new Float32Array(",
+                flatten(
+                    camMat([tx, ty, tz], azim, elev, d).subs(
+                        {
+                            sin(elev): "se",
+                            cos(elev): "ce",
+                            sin(azim): "s",
+                            cos(azim): "c",
+                        }
+                    )
+                ),
+                ")\n};\n",
+                file=output,
+                sep="",
+            )
+
+        def camPos(targ, camMat, dist):
+            ex = camMat[2, 0]
+            ey = camMat[2, 1]
+            ez = camMat[2, 2]
+            (tx, ty, tz, *_) = targ
+            return [tx + ex * dist, ty + ey * dist, tz + ez * dist, 1]
+
+        def print_camPos(output=sys.stdout, column_major=True):
+            def ij_to_l(i, j):
+                l = i + j * 4 if column_major else i * 4 + j
+                return l
+
+            print(
+                "export function camPos(targ,camMat,d){\n  //Camera position in world coordinates  // tx,ty,tz: target coordinates\n  // camMat: camera matrix\n  // d: distance of camera from target. \n  const [tx,ty,tz]=targ;\n  const ex=camMat[",
+                ij_to_l(2, 0),
+                "], ey=camMat[",
+                ij_to_l(2, 1),
+                "], ez=camMat[",
+                ij_to_l(2, 2),
+                "];\n  return [tx+ex*d,ty+ey*d,tz+ez*d,1];\n};\n",
+                file=output,
+                sep="",
+            )
+
+        def print_icamMat(output=sys.stdout, column_major=True):
+            def ij_to_l(i, j):
+                l = i + j * 4 if column_major else i * 4 + j
+                return l
+
+            iC = ["0"] * 16
+            iC[15] = "1"
+            for i in range(3):
+                for j in range(3):
+                    iC[ij_to_l(i, j)] = f"C[{ij_to_l(j, i)}]"
+                iC[ij_to_l(i, 3)] = f"C[{ij_to_l(2, i)}]*d+t[{i}]??0"
+            print(
+                "export function icamMat(t,C,d){\n  // The function icamMat calculates the inverse of the camera matrix for a given camera matrix\n  // t: target coordinates\n  // C: camera matrix\n  // d: distance of camera from target. \n  d??=0;\n  return new Float32Array([",
+                ", ".join(iC),
+                "])\n};\n",
+                file=output,
+                sep="",
+            )
+
+        with vfs.open("m4_cMaj.js", "w") as _f:
+            write_ES6_module(_f, column_major=True)
+            print_camMat(_f, column_major=True)
+            print_icamMat(_f, column_major=True)
+            print_camPos(_f, column_major=True)
+        m4_cMaj_js = vfs["m4_cMaj.js"]
+        with vfs.open("m4_rMaj.js", "w") as _f:
+            write_ES6_module(_f, column_major=False)
+            print_camMat(_f, column_major=False)
+            print_icamMat(_f, column_major=False)
+            print_camPos(_f, column_major=False)
+        m4_rMaj_js = vfs["m4_rMaj.js"]
+        camera = dict(
+            fov=30 * deg, target=[0, 0, 0], azim=30 * deg, elev=40 * deg, dist=1000
+        )
+        a = {
+            0: 0.8660253882408142,
+            1: -0.3830222189426422,
+            10: -0.7660444378852844,
+            11: 0,
+            12: 0,
+            13: 0,
+            14: -1000,
+            15: 1,
+            2: -0.3213938176631927,
+            3: 0,
+            4: -0.5,
+            5: -0.663413941860199,
+            6: -0.5566704273223877,
+            7: 0,
+            8: 0,
+            9: 0.6427876353263855,
+        }
+        b = [
+            -0.4999999999999998,
+            -0.5566703992264195,
+            0.6634139481689384,
+            0,
+            0.8660254037844387,
+            -0.3213938048432696,
+            0.3830222215594889,
+            0,
+            0,
+            0.766044443118978,
+            0.6427876096865394,
+            0,
+            0,
+            0,
+            -1000,
+            1,
+        ]
+        (tx, ty, tz, azim, elev, d) = sp.symbols("tx,ty,tz,azim,elev,d")
+        cm = camMat([tx, ty, tz], azim, elev, d).subs(
+            {sin(elev): "se", cos(elev): "ce", sin(azim): "s", cos(azim): "c"}
+        )
+        icm = icamMat([tx, ty, tz], azim, elev, d).subs(
+            {sin(elev): "se", cos(elev): "ce", sin(azim): "s", cos(azim): "c"}
+        )
+        print("camera matrix:")
+        sp.pprint(cm)
+        print()
+        print("inverse camera matrix:")
+        sp.pprint(icm)
+        print()
+        print("icamMat1([tx,ty,tz],cm,d):")
+        sp.pprint(icamMat1([tx, ty, tz], cm, d))
+        cm = sp.Matrix([[a00, a01, a02], [a10, a11, a12], [a20, a21, a22]])
+        print()
+        print("icamMat1([tx,ty,tz],aij,d):")
+        sp.pprint(icamMat1([tx, ty, tz], cm, d))
+        (tx, ty, tz, azim, elev, d) = (
+            0,
+            0,
+            0,
+            camera["azim"],
+            camera["elev"],
+            camera["dist"],
+        )
+        cm = camMat([tx, ty, tz], azim, elev, d)
+        icm = icamMat([tx, ty, tz], azim, elev, d)
+        print()
+        print("(cm.inv() @s p.Matrix([0,0,0,1]) ).evalf():")
+        sp.pprint((cm.inv() @ sp.Matrix([0, 0, 0, 1])).evalf())
+        print()
+        print("camPos([tx,ty,tz],cm.evalf(),d):")
+        print(camPos([tx, ty, tz], cm.evalf(), d))
+        print()
+        print("check that (cm @ icm).evalf()  = I :")
+        sp.pprint((cm @ icm).evalf())
+        return m4_cMaj_js,m4_rMaj_js
+    m4_cMaj_js,m4_rMaj_js=_()
+    vfs["m4_cMaj.js"],vfs["m4_rMaj.js"]=m4_cMaj_js,m4_rMaj_js
     return
 
 
@@ -825,7 +1064,6 @@ def _(vfs):
     // Touch Move
     canvas.addEventListener('touchmove', (e) => {
         e.preventDefault();
-
         if (!isDragging) return;
 
         if (e.touches.length === 1) {
@@ -924,77 +1162,42 @@ def _(vfs):
     	elev:40*deg,
     	dist:1000
     };
-    export const style={hideButton:false}
+    export const style={hideButton:false};
 
-    function cube(dx=1,dy,dz){
-      const numVertices=24;
-      const stride=6*4;
-      const X=0.5*dx;
-      const Y=dy|X;
-      const Z=dz|X;
-      const vertices= new Float32Array([
-        X,-Y,-Z, 1, 0, 0, X, Y,-Z, 1, 0, 0, X, Y, Z, 1, 0, 0, X,-Y, Z, 1, 0, 0,//+X
-       -X, Y, Z,-1, 0, 0,-X, Y,-Z,-1, 0, 0,-X,-Y,-Z,-1, 0, 0,-X,-Y, Z,-1, 0, 0,//-X
-       -X, Y,-Z, 0, 1, 0,-X, Y, Z, 0, 1, 0, X, Y, Z, 0, 1, 0, X, Y,-Z, 0, 1, 0,//+Y
-        X,-Y, Z, 0,-1, 0,-X,-Y, Z, 0,-1, 0,-X,-Y,-Z, 0,-1, 0, X,-Y,-Z, 0,-1, 0,//-Y
-       -X,-Y, Z, 0, 0, 1, X,-Y, Z, 0, 0, 1, X, Y, Z, 0, 0, 1,-X, Y, Z, 0, 0, 1,//+Z
-        X, Y,-Z, 0, 0,-1, X,-Y,-Z, 0, 0,-1,-X,-Y,-Z, 0, 0,-1,-X, Y,-Z, 0, 0,-1,//-Z
-      ]);
-      const indices=new Int16Array([
-       0, 1, 2, 2, 3, 0,//+X
-       4, 5, 6, 6, 7, 4,//-X
-       8, 9,10,10,11, 8,//+Y
-      12,13,14,14,15,12,//-Y
-      16,17,18,18,19,16,//+Z
-      20,21,22,22,23,20 //-Z
-      ]);
-      return {indices,vertices,stride,numVertices};
-    }
-
-    function circle(r,n){
-    	  const epath=[]
-    	  for (let i=0;i<n;i++){
-    	    const theta=i*2*Math.PI/n;
-    		const s=Math.sin(theta);
-    		const c=Math.cos(theta);
-    		epath[i] = [[r*c,r*s],[-s,c]];//x
-    	}
-    	return epath;
-    }
-    function extrude(epath,shape){
-    	const m=epath.length;
-    	const n=shape.length;
-    	const numVertices=m*n;
-    	const vertices=new Float32Array(numVertices*6);//xyz dxdydz (coordinate and direction vector)
-    	const stride=6*4;//xyz dxdydz float32
-    	const indices=new Int16Array(numVertices*6);//2 triangles per vertex
-    //	console.log(numVertices)
-    	for (let j=0;j<m;j++){
-    		let [[x_p,y_p],[ms_p,c_p]]=epath[j];
-    		for (let i=0;i<n;i++){
-    		    const [[x_s,y_s],[ms_s,c_s]]=shape[i];
-    			const k=j*n+i
-    			vertices[k*6 + 0]= x_p+x_s*c_p;
-    			vertices[k*6 + 1]= y_p-x_s*ms_p;
-                vertices[k*6 + 2]= y_s; //z is the y direction of the shape
-    			vertices[k*6 + 3]= c_s*c_p;
-    			vertices[k*6 + 4]= -c_s*ms_p;
-    			vertices[k*6 + 5]= -ms_s;
-    			indices[k*6+0]=  j           * n +   i          ; //j  ,i  
-    			indices[k*6+1]=((j + 1) % m) * n + ((i + 1) % n); //j+1,i+1
-    			indices[k*6+2]=  j           * n + ((i + 1) % n); //j  ,i+1
-    			indices[k*6+3]=  j           * n +   i          ; //j  ,i  
-    			indices[k*6+4]=((j + 1) % m) * n +   i          ; //j+1,i
-    			indices[k*6+5]=((j + 1) % m) * n + ((i + 1) % n); //j+1,i+1
-    		}
-    	}
-    	return {indices,vertices,stride,numVertices}
-    }
+    import { cube, circle, extrude } from './geometry.js';
+    import { cookiecutters } from './cookiecutters.js';
+    import { Segments2Complex } from './turtle-graphics.js';
 
     export const ShapeData={};
 
+    function getOutlinePath(name,{scale=1.0}){
+      let { turtlePath, startPoint, startAngle } = cookiecutters.outlines[name];
+      const p0 = startPoint || [0, 0];
+      const a0 = [Math.cos(startAngle * deg), Math.sin(startAngle * deg)];
+      const segs = turtlePath.map(([l, a]) => [l, a * deg]);
+      const S2C= Segments2Complex({ 
+          segs:segs,
+      p0_a0_segs: [[p0, a0], segs],
+        scale: scale, // Adjust to match radius 150 (circumference ~62.83185)
+        tol: 0.05,
+        loops: 1,
+        return_start: false
+      });
+      const pathPoints = Array.from(S2C);
+      const epath = pathPoints.map(({ point, angle }) => [point, angle]);
+      return epath;
+    }
+
     function initialize() {
-      Object.assign(ShapeData,(extrude(circle(150,50),circle(50.0,30))));
+    //  epath=getOutlinePath("Plain",{scale:15});
+    //  spath=getOutlinePath("Plain",{scale:5});
+      epath=getOutlinePath("Duck",{scale:11});
+      spath=getOutlinePath("Blade",{scale:5});
+      Object.assign(ShapeData, extrude(epath, spath));
+      // ... rest of initialize remains unchanged
+    //}
+
+    //  Object.assign(ShapeData,(extrude(circle(150,50),circle(50.0,30))));
     	//  ShapeData=cube(150);
     //  console.log(ShapeData.vertices.slice(0, 24));
       if (!gl) {
@@ -1163,9 +1366,645 @@ def _(mo):
 
 
 @app.cell
-def _(m4_cMaj_js):
-    print(m4_cMaj_js)
+def _(vfs):
+    vfs["m4_cMaj.js"]="""
+    // Column major matrix functions
+    const {sin,cos,sqrt,tan,PI}=Math,
+           pi=PI;
+
+    export function xRot(a){
+      const s=sin(a);
+      const c=cos(a);
+      return [1, 0, 0, 0, 0, c, s, 0, 0, -s, c, 0, 0, 0, 0, 1];
+    }
+
+    export function yRot(a){
+      const s=sin(a);
+      const c=cos(a);
+      return [c, 0, -s, 0, 0, 1, 0, 0, s, 0, c, 0, 0, 0, 0, 1];
+    }
+
+    export function zRot(a){
+      const s=sin(a);
+      const c=cos(a);
+      return [c, s, 0, 0, -s, c, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+    }
+
+    export function vRot([x,y,z],theta){
+      x??=0; y??=0; z??=0;
+      const length = sqrt(x*x + y*y + z*z);
+      if (length==0) {
+        if (theta===undefined){ 
+           return [1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1];
+        }
+        else {
+           throw new Error("Rotation axis vector cannot be zero if a rotation angle is specified!");
+        }
+      }
+      if (theta===undefined) theta=length;
+      const c=cos(theta);
+      const c1=1-c;
+      const s=sin(theta);
+      x/=length;
+      y/=length;
+      z/=length;
+      return[c + c1*x**2, c1*x*y + s*z, c1*x*z - s*y, 0, c1*x*y - s*z, c + c1*y**2, c1*y*z + s*x, 0, c1*x*z + s*y, c1*y*z - s*x, c + c1*z**2, 0, 0, 0, 0, 1];
+    }
+
+    export function tLat([tx,ty,tz]){
+      tx??=0; ty??=0; tz??=0;
+      return [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, tx, ty, tz, 1];
+    }
+
+    export function scal([sx, sy, sz]) {
+      sx??=1; sy??=1; sz??=1;
+      return [sx, 0, 0, 0, 0, sy, 0, 0, 0, 0, sz, 0, 0, 0, 0, 1];
+    }
+
+    export function T(A){
+      return new Float32Array([A[0], A[4], A[8], A[12], A[1], A[5], A[9], A[13], A[2], A[6], A[10], A[14], A[3], A[7], A[11], A[15]]);
+    }
+
+    export function mMul(B,A){
+      const C=new Array(16);
+      let sum;
+      for (let i=0;i<4;++i)
+        for (let j=0;j<4;++j){
+          sum=0;
+          for (let k=0;k<4;++k)
+            sum+= B[i + 4*k] * A[4*j + k];
+          C[i + 4*j] = sum;
+        }
+      return C;
+    }
+
+    export function vMul(A,[x0,x1,x2,x3]){
+      x0??=0; x1??=0; x2??=0; x3??=0;
+      return new Float32Array([A[0]*x0+A[4]*x1+A[8]*x2+A[12]*x3, A[1]*x0+A[5]*x1+A[9]*x2+A[13]*x3, A[2]*x0+A[6]*x1+A[10]*x2+A[14]*x3, A[3]*x0+A[7]*x1+A[11]*x2+A[15]*x3]);
+    }
+
+    export function  persp(fov, aspR, near, far) {
+      const f = tan(pi * 0.5 - 0.5 * fov);
+      const nfInv = 1.0 / (near - far);
+      return [f/aspR, 0, 0, 0, 0, f, 0, 0, 0, 0, nfInv*(far + near), -1, 0, 0, 2*far*near*nfInv, 0];
+    }
+
+    export function cMaj(A){return A;}
+    export function rMaj(A){return T(A);}
+
+    export function camMat([tx,ty,tz],azim,elev,d){
+      // The function camMat calculates the camera matrix (similar to lookAt, but with different input parameters)
+      // tx,ty,tz: target coordinates
+      // azim: azimuth angle in radians
+      // elev: elevation angle in radians
+      // d: distance of camera from target. 
+      tx??=0; ty??=0; tz??=0; d??=0;
+      const s=sin(azim),
+            c=cos(azim),
+            se=sin(elev),
+            ce=cos(elev);
+      return new Float32Array([-s, -c*se, c*ce, 0, c, -s*se, ce*s, 0, 0, ce, se, 0, -c*ty + s*tx, c*se*tx - ce*tz + s*se*ty, -c*ce*tx - ce*s*ty - d - se*tz, 1])
+    };
+
+    export function icamMat(t,C,d){
+      // The function icamMat calculates the inverse of the camera matrix for a given camera matrix
+      // t: target coordinates
+      // C: camera matrix
+      // d: distance of camera from target. 
+      d??=0;
+      return new Float32Array([C[0], C[4], C[8], 0, C[1], C[5], C[9], 0, C[2], C[6], C[10], 0, C[2]*d+t[0]??0, C[6]*d+t[1]??0, C[10]*d+t[2]??0, 1])
+    };
+
+    export function camPos(targ,camMat,d){
+      //camera position in world coordinates  // tx,ty,tz: target coordinates
+      // camMat: camera matrix
+      // d: distance of camera from target. 
+      const [tx,ty,tz]=targ;
+      const ex=camMat[2], ey=camMat[6], ez=camMat[10];
+      return [tx+ex*d,ty+ey*d,tz+ez*d,1];
+    };
+
+    """
     return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""### geometry.js""")
+    return
+
+
+@app.cell
+def _(vfs):
+    geometry_js=r"""
+    // geometry.js
+    export function cube(dx=1, dy, dz) {
+      const numVertices = 24;
+      const stride = 6 * 4;
+      const X = 0.5 * dx;
+      const Y = dy | X;
+      const Z = dz | X;
+      const vertices = new Float32Array([
+        X,-Y,-Z, 1, 0, 0, X, Y,-Z, 1, 0, 0, X, Y, Z, 1, 0, 0, X,-Y, Z, 1, 0, 0,
+        -X, Y, Z,-1, 0, 0,-X, Y,-Z,-1, 0, 0,-X,-Y,-Z,-1, 0, 0,-X,-Y, Z,-1, 0, 0,
+        -X, Y,-Z, 0, 1, 0,-X, Y, Z, 0, 1, 0, X, Y, Z, 0, 1, 0, X, Y,-Z, 0, 1, 0,
+        X,-Y, Z, 0,-1, 0,-X,-Y, Z, 0,-1, 0,-X,-Y,-Z, 0,-1, 0, X,-Y,-Z, 0,-1, 0,
+        -X,-Y, Z, 0, 0, 1, X,-Y, Z, 0, 0, 1, X, Y, Z, 0, 0, 1,-X, Y, Z, 0, 0, 1,
+        X, Y,-Z, 0, 0,-1, X,-Y,-Z, 0, 0,-1,-X,-Y,-Z, 0, 0,-1,-X, Y,-Z, 0, 0,-1,
+      ]);
+      const indices = new Int16Array([
+        0, 1, 2, 2, 3, 0, 4, 5, 6, 6, 7, 4, 8, 9,10,10,11, 8,
+        12,13,14,14,15,12, 16,17,18,18,19,16, 20,21,22,22,23,20
+      ]);
+      return { indices, vertices, stride, numVertices };
+    }
+
+    export function circle(r, n) {
+      const epath = [];
+      for (let i = 0; i < n; i++) {
+        const theta = i * 2 * Math.PI / n;
+        const s = Math.sin(theta);
+        const c = Math.cos(theta);
+        epath[i] = [[r * c, r * s], [-s, c]];
+      }
+      return epath;
+    }
+
+    export function extrude(epath, shape) {
+      const m = epath.length;
+      const n = shape.length;
+      const numVertices = m * n;
+      const vertices = new Float32Array(numVertices * 6);
+      const stride = 6 * 4;
+      const indices = new Int16Array(numVertices * 6);
+      for (let j = 0; j < m; j++) {
+        let [[x_p, y_p], [ms_p, c_p]] = epath[j];
+        for (let i = 0; i < n; i++) {
+          const [[x_s, y_s], [ms_s, c_s]] = shape[i];
+          const k = j * n + i;
+          vertices[k * 6 + 0] = x_p + x_s * c_p;
+          vertices[k * 6 + 1] = y_p - x_s * ms_p;
+          vertices[k * 6 + 2] = y_s;
+          vertices[k * 6 + 3] = c_s * c_p;
+          vertices[k * 6 + 4] = -c_s * ms_p;
+          vertices[k * 6 + 5] = -ms_s;
+          indices[k * 6 + 0] = j * n + i;
+          indices[k * 6 + 1] = ((j + 1) % m) * n + ((i + 1) % n);
+          indices[k * 6 + 2] = j * n + ((i + 1) % n);
+          indices[k * 6 + 3] = j * n + i;
+          indices[k * 6 + 4] = ((j + 1) % m) * n + i;
+          indices[k * 6 + 5] = ((j + 1) % m) * n + ((i + 1) % n);
+        }
+      }
+      return { indices, vertices, stride, numVertices };
+    }"""
+    vfs["geometry.js"]=geometry_js
+    return (geometry_js,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""### turtle-graphics.js""")
+    return
+
+
+@app.cell
+def _(vfs):
+    turtle_graphics_js=r"""
+    export function TurtlePathLengthArea(TurtlePath,arcStartAngle=0) {
+        /**
+         * Calculates the length, area, end point, final angle, and centroid of a shape formed by arc segments.
+         * 
+         * @param {Array} TurtlePath - An array of arrays, where each inner array contains [arc_length, arc_angle].
+         * @return {Array} An array containing:
+         *   - Total length
+         *   - Total area
+         *   - End point of the last arc as an array [x, y]
+         *   - Final angle after all rotations in radians
+         *   - Centroid [x, y] of the shape
+         */
+        let totalLength = 0; // Total length
+        let totalArea = 0; // Total area
+        let firstMoment = [0, 0]; // 1st moment around x and y axis
+        let arcStartPoint = [0, 0]; // Starting point of each arc segment
+    //    let arcStartAngle = 0; // Starting angle of each arc
+        let arcEndAngle = 0; // Ending angle of each arc
+        for (let [arcLength, arcAngle] of TurtlePath) {
+            // Pre-calculate frequently used terms:
+            const halfArcAngle = arcAngle / 2;
+            const chordAngle = arcStartAngle + halfArcAngle;
+    		const cosChordAngle = Math.cos(chordAngle);
+            const sinChordAngle = Math.sin(chordAngle);
+
+
+            // Calculate length
+            totalLength += arcLength;
+    		let chordLength;
+            if (arcAngle !== 0) {
+                if (arcLength !== 0) { // No need to update areas for sharp turns
+                    const radius = arcLength / arcAngle;
+                    const sinHalfArcAngle = Math.sin(halfArcAngle);
+                    chordLength	= radius * sinHalfArcAngle * 2; // Chord length
+                    const arcSegmentArea = 0.5 * radius ** 2 * (arcAngle - Math.sin(arcAngle)); // Arc segment's area
+                    const y_a = (2/3) * (radius * sinHalfArcAngle) ** 3;
+                    totalArea += arcSegmentArea;
+                    firstMoment[0] += arcSegmentArea * (arcStartPoint[0] - radius * Math.sin(arcStartAngle)) + y_a * sinChordAngle;
+                    firstMoment[1] += arcSegmentArea * (arcStartPoint[1] + radius * Math.cos(arcStartAngle)) - y_a * cosChordAngle;
+                } else {
+                    chordLength = 0;
+                }
+            } else {
+                chordLength = arcLength;
+            }
+
+            // Calculate the end point of this arc segment
+            const arcEndPoint = [
+                arcStartPoint[0] + chordLength * cosChordAngle,
+                arcStartPoint[1] + chordLength * sinChordAngle
+            ];
+            arcEndAngle = arcStartAngle + arcAngle;
+
+            // Shoelace formula for area
+            const triangleArea = (arcStartPoint[0] * arcEndPoint[1] - arcEndPoint[0] * arcStartPoint[1]) / 2;
+            totalArea += triangleArea;
+            firstMoment[0] += triangleArea * (arcStartPoint[0] + arcEndPoint[0]) / 3;
+            firstMoment[1] += triangleArea * (arcStartPoint[1] + arcEndPoint[1]) / 3;
+
+            // Update for next iteration
+            arcStartPoint = arcEndPoint;
+            arcStartAngle = arcEndAngle;
+        }
+
+        const centroid = [firstMoment[0] / totalArea, firstMoment[1] / totalArea];
+        return [totalLength, totalArea, arcStartPoint, arcEndAngle, centroid];
+    }
+
+
+    export function* Segments2Complex({ p0_a0_segs = [[[0, 0], [1, 0]], []], scale = 1.0, tol = 0.05, offs = 0, loops = 1, return_start = false }) {
+        console.log('in Segments2Complex');
+        const [p0, a0] = p0_a0_segs[0];
+        const Segs = p0_a0_segs[1];
+        let a = a0.slice();
+        let p = p0.slice();
+        p[0] = p[0]*scale - a[0] * offs; // Real part
+        p[1] = p[1]*scale - a[1] * offs; // Imaginary part
+        let L = 0;
+
+        if (return_start) {
+            yield { point: p, angle: a, length: L, segmentIndex: -1 };
+        }
+
+        let loopcount = 0;
+        while (loops === null || loops === Infinity || loopcount < loops) {
+            loopcount++;
+            for (let X = 0; X < Segs.length; X++) {
+                let [l, da, ..._] = Segs[X];
+                l *= scale;
+                let n;
+    			let v;
+    			let dda;
+                if (da !== 0) {  // If da is not zero
+                    let r = l / da;
+                    r += offs;
+                    if (r !== 0) {
+                        l = r * da;
+                        let dl = 2 * Math.sqrt(2 * Math.abs(r) * tol);
+                        n = Math.max(Math.ceil(6 * Math.abs(da / (2 * Math.PI))), Math.floor(l / dl) + 1);
+                        let dda2 = [Math.cos(0.5*da / n), Math.sin(0.5*da / n)];
+                        v = [2 * r* dda2[1] * dda2[0], 2 * r* dda2[1] * dda2[1]];
+                        v = [v[0] * a[0] - v[1] * a[1], v[0] * a[1] + v[1] * a[0]];
+                    } else {
+                        n = 1;
+                        v = [0,0];
+                    }
+    				dda = [Math.cos(da / n), Math.sin(da / n)];
+                    for (let i = 0; i < n; i++) {
+                        L += l / n;
+                        p[0] += v[0];
+                        p[1] += v[1];
+    					a = [a[0] * dda[0] - a[1] * dda[1], a[0] * dda[1] + a[1] * dda[0]];
+                        yield { point: p.slice(), angle: a, length: L, segmentIndex: X };
+                        v = [v[0] * dda[0] - v[1] * dda[1], v[0] * dda[1] + v[1] * dda[0]];
+                    }
+                } else {
+                    n = 1; // Set n to 1 for the zero case
+                    // Handle the case when da is zero
+                    L += l;
+                    p[0] += l * a[0];
+                    p[1] += l * a[1];
+                    yield { point: p.slice(), angle: a, length: L, segmentIndex: X };
+                }
+            }
+        }
+    }
+
+    // Usage example:
+
+    export function plot_segments(ctx,{p0=[0,0],a0=[1,0],segs=[],scale=1.0,tol=0.05,offs=0,loops=1,return_start=true}={}){
+    //	debugLog("segs: "+segs);
+    	let gen = Segments2Complex({
+        p0_a0_segs: [[p0, a0],segs],
+        scale: scale,
+        tol: tol,
+        offs: 0,
+        loops: loops,
+        return_start: return_start
+    });
+    //    segs.forEach((x,i)=>{debugLog(i+x);});
+        ctx.beginPath();
+        let {value:{point,angle:[cos_ang,sin_ang]}}=gen.next();
+    //	let point=value.point;
+    //	debugLog("point: "+point);
+        ctx.moveTo(point[0]-offs*sin_ang,point[1]+offs*cos_ang);
+    	for (let {point,angle:[cos_ang,sin_ang]} of gen){
+    //		debugLog("point: "+point);
+    		ctx.lineTo(point[0]-offs*sin_ang,point[1]+offs*cos_ang);
+    	}
+    	ctx.stroke()
+    }
+    """
+    vfs['turtle-graphics.js']=turtle_graphics_js
+    return (turtle_graphics_js,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""### cookiecutters.json""")
+    return
+
+
+@app.cell
+def _(vfs):
+    cookiecutters_json="""
+    {
+      "outlines": {
+        "Star": { 
+    	  "turtlePath":[
+          [ 2, -58.0 ],
+          [ 8, 0.0 ],
+          [ 3.2, 130.0 ],
+          [ 8, 0.0 ],
+          [ 2, -58.0 ],
+          [ 8, 0.0 ],
+          [ 3.2, 130.0 ],
+          [ 8, 0.0 ],
+          [ 2, -58.0 ],
+          [ 8, 0.0 ],
+          [ 3.2, 130.0 ],
+          [ 8, 0.0 ],
+          [ 2, -58.0 ],
+          [ 8, 0.0 ],
+          [ 3.2, 130.0 ],
+          [ 8, 0.0 ],
+          [ 2, -58.0 ],
+          [ 8, 0.0 ],
+          [ 3.2, 130.0 ],
+          [ 8, 0.0 ]
+        ]},
+        "Plain":{ 
+          "startPoint":[10, 0.0],
+    	  "startAngle": 90.0,
+    	  "turtlePath": [
+          [ 62.83185, 360.0 ]
+        ]},
+        "Scalloped":{ 
+    	  "turtlePath": [
+          [ 1.0, -110.0 ],
+          [ 2, 150.0 ],
+          [ 1.0, -110.0 ],
+          [ 2, 150.0 ],
+          [ 1.0, -110.0 ],
+          [ 2, 150.0 ],
+          [ 1.0, -110.0 ],
+          [ 2, 150.0 ],
+          [ 1.0, -110.0 ],
+          [ 2, 150.0 ],
+          [ 1.0, -110.0 ],
+          [ 2, 150.0 ],
+          [ 1.0, -110.0 ],
+          [ 2, 150.0 ],
+          [ 1.0, -110.0 ],
+          [ 2, 150.0 ],
+          [ 1.0, -110.0 ],
+          [ 2, 150.0 ]
+        ]},
+        "Heart":{
+    	  "startAngle": 180,
+    	  "turtlePath": [
+          [ 0.45, -45.0 ],
+          [ 10.0, 180.0 ],
+          [ 6.91, -10.0 ],
+          [ 1.1, 110.0 ],
+          [ 6.91, -10.0 ],
+          [ 10.0, 180.0 ],
+          [ 0.45, -45.0 ]
+        ]},
+        "Duck":{ 
+    	  "startAngle": 180, 
+    	  "turtlePath": [
+          [ 0.4, -10.0 ],
+          [ 13.297, 25.0 ],
+          [ 3, -80.0 ],
+          [ 4, 160.0 ],
+          [ 22.913, 90.0 ],
+          [ 15, 90.0 ],
+          [ 5, -90.0 ],
+          [ 5, 20.0 ],
+          [ 3, 170.0 ],
+          [ 2, -20.0 ],
+          [ 3, -90.0 ],
+          [ 15, 220.0 ],
+          [ 5, -125.0 ]
+        ]},
+        "Tree":{ 
+    	  "startAngle":180,
+    	  "turtlePath": [
+          [ 0.75, 40.0 ],
+          [ 3, 0.0 ],
+          [ 1.5, 140.0 ],
+          [ 0.6, 0.0 ],
+          [ 1.0, -140.0 ],
+          [ 3, 0.0 ],
+          [ 1.5, 140.0 ],
+          [ 0.6, 0.0 ],
+          [ 1.0, -140.0 ],
+          [ 3, 0.0 ],
+          [ 1.5, 140.0 ],
+          [ 0.6, 0.0 ],
+          [ 1.0, -140.0 ],
+          [ 3, 0.0 ],
+          [ 1.5, 140.0 ],
+          [ 11.431, 0.0 ],
+          [ 1.5, 140.0 ],
+          [ 3, 0.0 ],
+          [ 1.0, -140.0 ],
+          [ 0.6, 0.0 ],
+          [ 1.5, 140.0 ],
+          [ 3, 0.0 ],
+          [ 1.0, -140.0 ],
+          [ 0.6, 0.0 ],
+          [ 1.5, 140.0 ],
+          [ 3, 0.0 ],
+          [ 1.0, -140.0 ],
+          [ 0.6, 0.0 ],
+          [ 1.5, 140.0 ],
+          [ 3, 0.0 ],
+          [ 0.75, 40.0 ]
+        ]}, 
+    	"Blade":{ 
+    	  "startPoint":[-1.8, 0.0],
+    	  "startAngle": 0.0,
+    	  "turtlePath":[
+          [ 3.6, 0 ],
+    	  [0,45],
+    	  [0.661522368915,0],
+          [ 3, 90],
+    	  [ 2.5, 0],
+          [0,-43.5679],
+          [ 10, 0 ],
+          [0,88.5679],
+          [ 0.5, 0 ],
+          [0,88.5679],
+          [ 10, 0],
+          [0,-43.5679],
+    	  [ 2.5, 0],
+          [ 3,  90],
+    	  [0.661522368915,0],
+    	  [0,45]
+        ]},
+    	"L":{ 
+    	  "turtlePath": [
+    	  [  8,  0 ],
+    	  [  0, 90 ],
+    	  [  4,  0 ],
+    	  [  0, 90 ],
+    	  [  8,  0 ],
+    	  [  0,-180 ],
+    	  [  8,  0 ],
+    	  [  0, 90 ],
+          [  4,  0 ],
+    	  [  0, 90 ],
+    	  [  8,  0 ],
+    	  [  0, 90 ],
+          [  8,  0 ],
+    	  [  0,-90 ],
+    	  [ 16,  0 ],
+    	  [  0, 90 ],
+          [  8,  0 ],
+    	  [  0, 90 ],
+          [  4,  0 ],
+    	  [  0, 90 ],
+    	  [  8,  0 ],
+    	  [  0,-180 ],
+          [  8,  0 ],
+    	  [  0, 90 ],
+          [  4,  0 ],
+    	  [  0, 90 ],
+    	  [  8,  0 ],
+    	  [  0,-180 ],
+          [  8,  0 ],
+    	  [  0, 90 ],
+          [  4,  0 ],
+    	  [  0, 90 ],
+    	  [  8,  0 ],
+    	  [  0,-180 ],
+          [  8,  0 ],
+    	  [  0, 90 ],
+          [  4,  0 ],
+    	  [  0, 90 ],
+    	  [  8,  0 ],
+    	  [  0,-180 ],
+          [  8,  0 ],
+    	  [  0, 90 ],
+    	  [  4,  0 ],
+    	  [  0, 90 ],
+    	  [ 16,  0 ],
+    	  [  0,-180 ],
+    	  [ 16,  0 ],
+    	  [  0, 90 ],
+    	  [  4,  0 ],
+    	  [  0, 90 ],
+    	  [  4,  0 ],
+    	  [  0, 90 ],
+    	  [ 24,  0 ],
+    	  [  0,-180 ],
+    	  [ 24,  0 ],
+    	  [  0, 90 ],
+    	  [  4,  0 ],
+    	  [  0, 90 ],
+    	  [  8,  0 ],
+    	  [  0,-180 ]
+        ]},
+    	"A":{ 
+    	  "turtlePath": [
+    	  [  0,  70 ],
+    	  [  0.4, 0 ],
+    	  [  0,  -70 ],
+    	  [  0.41, 0 ],
+    	  [  0,  180 ],
+    	  [  0.41, 0 ],
+    	  [  0, -110 ],
+    	  [  0.6, 0  ],
+          [  0, -140 ],
+    	  [  1, 0 ],
+    	  [  0,  70 ]
+        ]}, 
+    	"B":{ 
+    	  "turtlePath": [
+    	  [  0,  90 ],
+    	  [  1, 0 ],
+    	  [  0,  -90 ],
+    	  [  0.25, 0 ],
+    	  [  0.684, -180 ],
+    	  [  0.25,0 ],
+    	  [  0, 180 ],
+    	  [  0.25, 0 ],
+    	  [  0.896, -180 ],
+    	  [  0.25,0 ],
+    	  [  0, 180 ]
+        ]}
+      },
+      "brickworks": {
+        "centered": [
+          [ [ -0.45, 0.9 ], [ -1.35, 0.9 ], [ 0.45, 0.9 ], [ 1.35, 0.9 ] ],
+          [ [ -0.8, 0.8 ], [ -1.6, 0.8 ], [ 0.8, 0.8 ], [ 1.6, 0.8 ], [ 0.0, 0.8 ] ],
+          [ [ -1.1, 0.733 ], [ -1.833, 0.733 ], [ 1.1, 0.733 ], [ 1.833, 0.733 ], [ -0.367, 0.733 ], [ 0.367, 0.733 ] ],
+          [ [ -0.92, 0.92 ], [ -1.84, 0.92 ], [ 0.92, 0.92 ], [ 1.84, 0.92 ], [ 0.0, 0.92 ] ],
+          [ [ 0.0, 1.0 ], [ -1.9, 1.0 ], [ 1.9, 1.0 ] ],
+          [ [ 0.0, 0.8 ], [ -2.0, 1.0 ], [ 2.0, 1.0 ] ],
+          [ [ 0.0, 0.6 ], [ -2.05, 0.9 ], [ 2.05, 0.9 ] ],
+          [ [ 0.0, 0.5 ], [ -2.05, 0.9 ], [ 2.05, 0.9 ] ],
+          [ [ 0.0, 0.5 ], [ -2.05, 0.9 ], [ 2.05, 0.9 ] ],
+          [ [ 0.0, 0.5 ], [ -1.95, 0.9 ], [ 1.95, 0.9 ] ],
+          [ [ 0.0, 0.5 ], [ -1.85, 0.9 ], [ 1.85, 0.9 ] ],
+          [ [ 0.0, 0.5 ], [ -1.7, 1.0 ], [ 1.7, 1.0 ] ],
+          [ [ 0.0, 0.5 ], [ -1.5, 1.0 ], [ 1.5, 1.0 ] ],
+          [ [ 0.0, 0.5 ], [ -1.3, 1.0 ], [ 1.3, 1.0 ] ],
+          [ [ 0.0, 0.5 ], [ -1.1, 1.0 ], [ 1.1, 1.0 ] ],
+          [ [ 0.0, 0.5 ], [ -0.9, 1.0 ], [ 0.9, 1.0 ] ],
+          [ [ 0.0, 0.6 ], [ -0.75, 0.9 ], [ 0.75, 0.9 ] ],
+          [ [ -0.5, 1.0 ], [ 0.5, 1.0 ] ],
+          [ [ -0.533, 0.533 ], [ -0.0, 0.533 ], [ 0.533, 0.533 ] ],
+          [ [ -0.3, 0.6 ], [ 0.3, 0.6 ] ],
+    	  [[0,1.0]]
+        ]
+      }
+    }"""
+    vfs['cookiecutters.json']=cookiecutters_json
+    return (cookiecutters_json,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""### cookiecutters.js""")
+    return
+
+
+@app.cell
+def _(cookiecutters_json, vfs):
+    cookiecutters_js=r"export const cookiecutters="+cookiecutters_json+";"
+    vfs["cookiecutters.js"]=cookiecutters_js
+    return (cookiecutters_js,)
 
 
 @app.cell(hide_code=True)
@@ -1176,7 +2015,7 @@ def _(mo):
 
 @app.cell
 def _(vfs):
-    list(vfs.keys())
+    list(vfs.keys()) 
     return
 
 
@@ -1189,14 +2028,15 @@ def _(mo):
 @app.cell
 def _(
     ES6converter,
-    m4_cMaj_js,
-    m4_rMaj_js,
+    cookiecutters_js,
+    geometry_js,
     perf_counter,
+    turtle_graphics_js,
     vfs,
     webgl_torus_html,
     webgl_torus_js,
 ):
-    (webgl_torus_html,webgl_torus_js,m4_cMaj_js,m4_rMaj_js) #dependencies
+    (webgl_torus_html,webgl_torus_js,geometry_js,turtle_graphics_js,cookiecutters_js) #dependencies
     print(f'{(len1:=len(vfs["webgl-torus.js"]))=}\n{(len2:=len(vfs["m4_cMaj.js"])) = }\n{len1+len2 = }')
     print()
     t1=perf_counter()
@@ -1212,22 +2052,23 @@ def _(
     #converting the html file with ES6 module references into a single html file with minified iife functions.   
     print()
     print('"webgl-torus.html" with ES6 module references  -->  stand alone minified "index.html" ')
-    ES6converter.process_html('webgl-torus.html',minify=True,output_file='index.html')
-    index_html=vfs['index.html']
+    ES6converter.process_html('webgl-torus.html',minify=False,output_file='index.html')
+    index_html=vfs['index.html'] 
+    print(index_html[:1000])
     return iife_script, index_html
 
 
 @app.cell
 def _(mo):
     write_index_file_btn=mo.ui.run_button(label='Write "index.html" to disk.')
-    return (write_index_file_btn,)
+    return
 
 
 @app.cell
-def _(mo, vfs, write_index_file_btn):
-    mo.stop(not write_index_file_btn.value,write_index_file_btn)
+def _(index_html):
+    #mo.stop(not write_index_file_btn.value,write_index_file_btn)
     #copy index.html from virtual file system to disk
-    with open('index.html','w') as f: f.write(vfs['index.html'])
+    with open('index.html','w') as f: f.write(index_html)
     return
 
 
@@ -1239,6 +2080,12 @@ def _(mo):
     An ipywidget.Output widget is used in combination with IPython.Display.JavaScript to show the interactive webgl viewer.
     """
     )
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""### class TorusWidget""")
     return
 
 
@@ -1290,6 +2137,12 @@ def _(anywidget, iife_script, traitlets):
     return torus_widget, torus_widget2
 
 
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""### Test TorusWidget""")
+    return
+
+
 @app.cell
 def _(mo, torus_widget, torus_widget2):
     mo.hstack([torus_widget, torus_widget2])
@@ -1298,7 +2151,8 @@ def _(mo, torus_widget, torus_widget2):
 
 @app.cell
 def _(torus_widget):
-    torus_widget.hide_button=False
+    torus_widget.hide_button=True
+    torus_widget.hide_button
     return
 
 
@@ -1311,13 +2165,6 @@ def _(torus_widget, torus_widget2):
 @app.cell
 def _(btn):
     btn
-    return
-
-
-@app.cell
-def _(torus_widget):
-    torus_widget.animate=True
-    torus_widget.animate
     return
 
 
@@ -1350,6 +2197,114 @@ def _(base64, export_vfs_button, mo, vfs):
             download_link = f'<a download="{filename}" href="data:application/zip;base64,{b64_data}" style="display:block;">Click to download {filename}</a>' 
             return mo.iframe(download_link,height="30")
     download_data('anywidget_torus.zip',vfs.archive(filename_prefix='anywidget_torus'))
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""## Python Tests""")
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""### Segments2Complex""")
+    return
+
+
+@app.cell
+def _(exp, inf, pi):
+    def Segments2Complex(Segs,p0=0.+0.j,scale=1.0,a0=0+1j,tol=0.05,offs=0,loops=1,return_start=False):
+      """
+      The parameter "tol defines the resolution. It is the maximum allowable
+      difference between circular arc segment, and the secant between the
+      calculated points on the arc. Smaller values for tol will result in
+      more points per segment.
+      """
+      a=a0
+      p=p0*scale
+      p-=1j*a*offs
+      L=0
+      if return_start:
+          yield p,a,L,-1 #assuming closed loop: start-point = end-point
+      loopcount=0
+      while (loops==None) or (loops==inf) or (loopcount<loops):
+          loopcount+=1
+          for X,(l,da,*_) in enumerate(Segs):
+            l=l*scale
+            if da!=0:
+              r=l/da
+              r+=offs
+              if r!=0:
+                l=r*da
+                dl=2*abs(2*r*tol)**0.5
+                n=max(int(abs(6*(da/(2*pi)))),int(l//dl)+1)
+              else:
+                n=1
+              dda=exp(1j*da/n)
+              dda2=dda**0.5
+              v=(2*r*dda2.imag)*dda2*a
+            else:
+              n=1
+              dda=1
+              v=l*a
+            for i in range(n):
+              L+=l/n
+              p+=v
+              v*=dda
+              a*=dda
+              yield p,a,L,X
+    return (Segments2Complex,)
+
+
+@app.cell
+def _(mo):
+    run_python_tests_btn=mo.ui.run_button(label='run Python tests')
+    return (run_python_tests_btn,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""### Run Python Tests""")
+    return
+
+
+@app.cell
+def _(Segments2Complex, cookiecutters_json, mo, pi, run_python_tests_btn):
+    mo.stop(not run_python_tests_btn.value, run_python_tests_btn)
+
+    def _():
+        from matplotlib import pyplot as plt
+        import cmath
+        import json
+
+        def getoutline(name):
+            tp = json.loads(cookiecutters_json)["outlines"][name]
+            p0 = complex(*tp.get("startPoint", [0, 0]))
+            a0 = cmath.rect(1.0, tp.get("startAngle", 0.0) * pi / 180)
+            segs = [[l, a * pi / 180] for l, a, *_ in tp["turtlePath"]]
+            return p0, a0, segs
+
+        fig, [ax1, ax2] = plt.subplots(1, 2, width_ratios=(3.5, 1), figsize=(8, 6))
+        tol = 0.05  
+        p0, a0, segs = getoutline("Duck")
+        p = list(zip(*[(p.real, p.imag) for p, *_ in Segments2Complex( segs, p0=p0, a0=a0, scale=2.4, tol=tol, return_start=True)]))
+        Duck_points = len(p[0])-1
+        ax1.plot(*p)
+
+        ax1.set_aspect("equal")
+        p0, a0, segs = getoutline("Blade")
+        p = [(p.real, p.imag, h.real, h.imag) for p, h, *_ in Segments2Complex(segs, p0=p0, a0=a0, tol=tol, return_start=True)]
+        for i, p_ in enumerate(p):
+            print(f"{i:3}, {p_[0]:7.3f}, {p_[1]:7.3f}, {p_[2]:7.3f}, {p_[3]:7.3f}")
+        Blade_points = len(p)-1
+        ax2.plot(*(list(zip(*p))[:2]))
+        offs=0.5
+        ax2.plot(*(list(zip(*[[x+offs*sa,y-offs*ca] for x,y,ca,sa in p]))))
+        ax2.set_aspect('equal')
+        print(f"{Duck_points=}, {Blade_points=},{Duck_points*Blade_points=}")
+        return fig
+    _()
     return
 
 
