@@ -967,8 +967,14 @@ def _(mo):
 @app.cell
 def _(vfs):
     webgl_torus_js=r"""
-    if (typeof element === 'undefined') 
+    let elementIsDefined
+    if (typeof element === 'undefined') {
+       elementIsDefined=false;
        window.element=document.body;
+    }
+    else{
+       elementIsDefined=true;
+    }
     const deg=Math.PI / 180;
     const iDeg=1/deg;
     export function radToDeg(r) {
@@ -1028,8 +1034,12 @@ def _(vfs):
     wrapper.style.display = "inline-block";
 
     export const hint = document.createElement("div");
-    hint.innerText = "Colors indicate surface normal directions: +xyz=rgb, -xyz=cmy \nDrag to rotate the view.";
+    hint.innerText = "Colors indicate surface normal directions: +xyz=rgb, -xyz=cmy \nDrag to rotate the view.\nelementIsDefined="+elementIsDefined+"\ntypeof element="+(typeof element)+
+    "\ntypeof element.logdiv="+(typeof element.logdiv);
     wrapper.appendChild(hint);
+    if (!(typeof element.logdiv==='undefined')) {
+    element.logdiv.innerText+="initializing";
+    }
 
     export const canvas = document.createElement("canvas");
     canvas.style.display = "block";
@@ -1170,8 +1180,9 @@ def _(vfs):
 
     export const ShapeData={};
 
+
     function getOutlinePath(name,{scale=1.0}){
-      let { turtlePath, startPoint, startAngle } = cookiecutters.outlines[name];
+    const { turtlePath, startPoint, startAngle } = cookiecutters.outlines[name];
       const p0 = startPoint || [0, 0];
       const a0 = [Math.cos(startAngle * deg), Math.sin(startAngle * deg)];
       const segs = turtlePath.map(([l, a]) => [l, a * deg]);
@@ -1185,15 +1196,24 @@ def _(vfs):
       });
       const pathPoints = Array.from(S2C);
       const epath = pathPoints.map(({ point, angle }) => [point, angle]);
+      console.log(epath);
+  
+      if (name==='Circle'){
+      return circle(scale*10,Math.round(13*Math.sqrt(scale)));  
+      }
+  
       return epath;
     }
 
+
     function initialize() {
-    //  epath=getOutlinePath("Plain",{scale:15});
-    //  spath=getOutlinePath("Plain",{scale:5});
+    hint.innerText+="\ninitializing";
+        let scale, epath, spath;
+    //  epath=getOutlinePath("Plain",{scale:15});    
+    //  spath=getOutlinePath("Plain",{scale:0.5});
       epath=getOutlinePath("Duck",{scale:11});
-      spath=getOutlinePath("Blade",{scale:5});
-      Object.assign(ShapeData, extrude(epath, spath));
+     spath=getOutlinePath("Blade",{scale:5});
+       Object.assign(ShapeData, extrude(epath, spath));
       // ... rest of initialize remains unchanged
     //}
 
@@ -2096,7 +2116,9 @@ def _(anywidget, iife_script, traitlets):
         function render({ model, el:element }) {
               let logdiv=document.createElement('div');
               element.appendChild(logdiv);
+              logdiv.innerText="log1";
             """ + iife_script + """
+            logdiv.innerText="log2";
             const {state, drawScene, setAnimationState, canvas, animBtn, style} = modules['webgl-torus.js'];
             setAnimationState(model.get('animate')); // Initialize state
             model.on('change:animate', () => {
@@ -2151,7 +2173,7 @@ def _(mo, torus_widget, torus_widget2):
 
 @app.cell
 def _(torus_widget):
-    torus_widget.hide_button=True
+    torus_widget.hide_button=False
     torus_widget.hide_button
     return
 
