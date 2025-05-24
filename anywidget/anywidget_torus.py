@@ -1198,7 +1198,7 @@ def _(vfs):
       const segs = turtlePath.map(([l, a]) => [l, a * deg]);
       const S2C= Segments2Complex({ 
           segs:segs,
-      p0_a0_segs: [[p0, a0], segs],
+      p0_a0_segs: [[[p0[0]*scale,p0[1]*scale], a0], segs],
         scale: scale, // Adjust to match radius 150 (circumference ~62.83185)
         tol: 0.05,
         loops: 1,
@@ -1335,7 +1335,7 @@ def _(vfs):
         if (animate && !state.animate) { 
             requestAnimationFrame(drawScene);
         }
-        state.animate = animate;    
+        state.animate = animate;        
         animBtn.style.display = state.animate || style.hideButton ? 'none' : 'block';
     }
 
@@ -1675,8 +1675,8 @@ def _(vfs):
         const Segs = p0_a0_segs[1];
         let a = a0.slice();
         let p = p0.slice();
-        p[0] = p[0]*scale - a[0] * offs; // Real part
-        p[1] = p[1]*scale - a[1] * offs; // Imaginary part
+        p[0] = p[0] - a[0] * offs; // Real part
+        p[1] = p[1] - a[1] * offs; // Imaginary part
         let L = 0;
 
         if (return_start) {
@@ -2172,7 +2172,7 @@ def _(anywidget, iife_script, traitlets):
                 console.log('Initial hide_button:', model.get('hide_button'));
                 style.hideButton = model.get('hide_button');
                 setAnimationState(model.get('animate'));
-                animBtn.style.display = style.hideButton ? 'none' : 'block';
+    //            animBtn.style.display = style.hideButton ? 'none' : 'block';
                 logdiv.innerText += '\nLog: Traitlets set';
 
                 // Traitlet change handlers
