@@ -1206,7 +1206,7 @@ def _(vfs):
       });
       const pathPoints = Array.from(S2C);
       const epath = pathPoints.map(({ point, angle }) => [point, angle]);
-      console.log(epath);
+    //  console.log(epath);
   
       if (name==='Circle'){
       return circle(scale*10,Math.round(13*Math.sqrt(scale)));  
@@ -1670,7 +1670,7 @@ def _(vfs):
 
 
     export function* Segments2Complex({ p0_a0_segs = [[[0, 0], [1, 0]], []], scale = 1.0, tol = 0.05, offs = 0, loops = 1, return_start = false }) {
-        console.log('in Segments2Complex');
+    //    console.log('in Segments2Complex');
         const [p0, a0] = p0_a0_segs[0];
         const Segs = p0_a0_segs[1];
         let a = a0.slice();
