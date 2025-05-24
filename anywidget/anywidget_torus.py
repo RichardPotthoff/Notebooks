@@ -321,7 +321,7 @@ def _(vfs):
           return '\n'.join(result)
 
       exports={}
-      export_pattern = r'(?=^|;)\s*(export\s+(?P<export_default>default\s+)?(?:(?P<export_type>function\*?|const|let|var|class)\s+)?(?P<export_name>\w+)\s*)'
+      export_pattern = r'(?=^|;)\s*(export\s+(?P<export_default>default\s+)?(?:(?P<export_type>function(?:\s*\*)?|const|let|var|class)\s+)?(?P<export_name>\w+)\s*)'
 
       def export_callback(match):
           groupdict=match.groupdict()
