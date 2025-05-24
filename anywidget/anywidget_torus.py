@@ -112,8 +112,10 @@ def _():
         def __getitem__(self, key):
             normalized_key = self._normalize_path(key)
             return super().__getitem__(normalized_key)
-
-        def open(self, path, mode='r', cwd=None):
+        @property
+        def open(self):
+            return lambda *args,**kwargs: self._open(*args, **kwargs)
+        def _open(self, path, mode='r', cwd=None):
             """
             Open a file in the virtual filesystem.
 
@@ -169,10 +171,6 @@ def _():
                 return VFSStringIO(self, normalized_path, initial_value=content, mode=mode)
             else:
                 raise ValueError(f"Unsupported mode: {mode}")
-
-        def create_open(self, cwd=None):
-            effective_cwd = cwd if cwd is not None else self.default_cwd
-            return lambda filename, mode='r': self.open(filename, mode, effective_cwd)
 
         def archive(self, filename_prefix="vfs_archive"):
             """
@@ -254,7 +252,6 @@ def _(vfs):
     import os
     from bs4 import BeautifulSoup
     from collections import defaultdict
-    open=open # used if embedded in Jupyter notebooks: gets replaced to use a virtual file system
 
     def combine_patterns(*patterns):
       combined_pattern ='|'.join(f'(?P<pattern{i}>'+pattern[0]+')' for i,pattern in enumerate(patterns))
@@ -321,7 +318,7 @@ def _(vfs):
           return '\n'.join(result)
 
       exports={}
-      export_pattern = r'(?=^|;)\s*(export\s+(?P<export_default>default\s+)?(?:(?P<export_type>function(?:\s*\*)?|const|let|var|class)\s+)?(?P<export_name>\w+)\s*)'
+      export_pattern = r'(?=^|;)\s*(export\s+(?P<export_default>default\s+)?(?P<export_type>(?:async\s+)?(?:function|const|let|var|class)(?:\s+|\s*\*\s*))?(?P<export_name>\w+)\s*)'
 
       def export_callback(match):
           groupdict=match.groupdict()
@@ -363,7 +360,7 @@ def _(vfs):
 
       return iife_wrapper,imports
 
-    def gather_dependencies(content, processed_modules, dependencies, in_process=None, module_dir=None, module_filename=None, minify=False):
+    def gather_dependencies(content, processed_modules, dependencies, in_process=None, module_dir=None, module_filename=None, minify=False,open=open):
         if in_process==None:
           in_process=set()
         if module_filename:
@@ -387,19 +384,19 @@ def _(vfs):
             imodule_dir=os.path.dirname(full_path)
             with open(full_path, 'r') as f:
                content = f.read()
-            dependency_content += gather_dependencies(content, processed_modules, dependencies,in_process,module_dir=imodule_dir,module_filename=ifile_name, minify=minify)
+            dependency_content += gather_dependencies(content, processed_modules, dependencies,in_process,module_dir=imodule_dir,module_filename=ifile_name, minify=minify,open=open)
         if module_filename:
           in_process.remove(module_filename)
         return dependency_content + converted
 
-    def convertES6toIIFE(content="import from './main.js';",module_dir='',module_filename='',minify=True):
+    def convertES6toIIFE(content="import from './main.js';",module_dir='',module_filename='',minify=True,open=open):
       processed_modules = set()
       dependencies = defaultdict(set)
       iife_content = gather_dependencies(content, processed_modules, dependencies,  
-                    module_dir=module_dir, module_filename=module_filename,  minify=minify)
+                    module_dir=module_dir, module_filename=module_filename,  minify=minify,open=open)
       return iife_content
 
-    def process_html(html_path,minify=False,output_file='output.html'):
+    def process_html(html_path,minify=False,output_file='output.html',open=open):
         with open(html_path, 'r') as file:
             soup = BeautifulSoup(file, 'html.parser')
 
@@ -426,7 +423,7 @@ def _(vfs):
                 script['type'] = 'text/javascript'  # Change type to standard JavaScript
                 # Insert the converted IIFE content for this module and its dependencies
                 iife_content = gather_dependencies(content, processed_modules, dependencies,  
-                    module_dir=module_dir, module_filename=module_filename,  minify=minify)
+                    module_dir=module_dir, module_filename=module_filename,  minify=minify,open=open)
                 script.string = iife_content
             else:
                 # For regular scripts, insert their content
@@ -479,10 +476,10 @@ def _(mo):
 
 
 @app.cell
-def _(es6_html_to_iife_html_code, load_module, vfs):
+def _(es6_html_to_iife_html_code, load_module):
     ES6converter=load_module('es6_html_to_iife_html', es6_html_to_iife_html_code)
     #Set the modules "open" function to out vfs.create_open():
-    ES6converter.open=vfs.create_open()
+    #ES6converter.open=vfs.create_open()
     #(This 'tricks' the module into using our vfs for reading and writing files.)
     return (ES6converter,)
 
@@ -1207,11 +1204,11 @@ def _(vfs):
       const pathPoints = Array.from(S2C);
       const epath = pathPoints.map(({ point, angle }) => [point, angle]);
     //  console.log(epath);
-  
+
       if (name==='Circle'){
       return circle(scale*10,Math.round(13*Math.sqrt(scale)));  
       }
-  
+
       return epath;
     }
 
@@ -2069,7 +2066,7 @@ def _(
     print(f'{(len1:=len(vfs["webgl-torus.js"]))=}\n{(len2:=len(vfs["m4_cMaj.js"])) = }\n{len1+len2 = }')
     print()
     t1=perf_counter()
-    iife_script=ES6converter.convertES6toIIFE('import "./webgl-torus.js";',minify=True)
+    iife_script=ES6converter.convertES6toIIFE('import "./webgl-torus.js";',minify=True,open=vfs.open)
     print("HTML processing completed with ES6 modules converted to IIFE functions.")
     t2=perf_counter()
     print()
@@ -2079,12 +2076,7 @@ def _(
     print()
     print('IIFE JavaScript:\n',iife_script[:500], ' ...') 
     #converting the html file with ES6 module references into a single html file with minified iife functions.   
-    print()
-    print('"webgl-torus.html" with ES6 module references  -->  stand alone minified "index.html" ')
-    ES6converter.process_html('webgl-torus.html',minify=False,output_file='index.html')
-    index_html=vfs['index.html'] 
-    print(index_html[:1000])
-    return iife_script, index_html
+    return (iife_script,)
 
 
 @app.cell
@@ -2094,11 +2086,15 @@ def _(mo):
 
 
 @app.cell
-def _(index_html):
+def _(ES6converter, vfs):
     #mo.stop(not write_index_file_btn.value,write_index_file_btn)
     #copy index.html from virtual file system to disk
+    print('"webgl-torus.html" with ES6 module references  -->  stand alone minified "index.html" ')
+    ES6converter.process_html('webgl-torus.html',minify=False,output_file='index.html',open=vfs.open)
+    index_html=vfs['index.html'] 
+    print(index_html[:500])
     with open('index.html','w') as f: f.write(index_html)
-    return
+    return (index_html,)
 
 
 @app.cell(hide_code=True)
