@@ -3,6 +3,10 @@ import marimo
 __generated_with = "0.13.10"
 app = marimo.App()
 
+with app.setup:
+    # Initialization code that runs before all other cells
+    pass
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -2114,43 +2118,103 @@ def _(anywidget, iife_script, traitlets):
     class TorusWidget(anywidget.AnyWidget):
         _esm = """
         function render({ model, el:element }) {
-              let logdiv=document.createElement('div');
-              element.appendChild(logdiv);
-              logdiv.innerText="log1";
-            """ + iife_script + """
-            logdiv.innerText="log2";
-            const {state, drawScene, setAnimationState, canvas, animBtn, style} = modules['webgl-torus.js'];
-            setAnimationState(model.get('animate')); // Initialize state
-            model.on('change:animate', () => {
-                setAnimationState(model.get('animate'));
-            });
-            setAnimationState(model.get('hide_button')); // Initialize state
-            model.on('change:hide_button', () => {
-                logdiv.innerText="hide_button = "+model.get('hide_button');
-                style.hideButton=model.get('hide_button');
-                setAnimationState(model.get('animate'));
-            });
-            // Stop animation on drag
-           canvas.addEventListener('touchstart', (e) => {
-                    model.set('animate', false);
-                    model.save_changes();
-                } 
-            );
-            canvas.addEventListener('mousedown', (e) => {
-                    model.set('animate', false);
-                    model.save_changes();
+            // Create debug div as an overlay
+            let logdiv = document.createElement('div');
+            logdiv.style.position = 'absolute';
+            logdiv.style.top = '10px';
+            logdiv.style.right = '10px';
+            logdiv.style.maxWidth = '200px';
+            logdiv.style.maxHeight = '100px';
+            logdiv.style.overflow = 'auto';
+            logdiv.style.background = 'rgba(255, 255, 255, 0.8)';
+            logdiv.style.border = '1px solid red';
+            logdiv.style.padding = '5px';
+            logdiv.style.fontSize = '12px';
+            logdiv.style.zIndex = '20';
+            logdiv.innerText = 'Log: Init...';
+            element.style.position = 'relative'; // Ensure el is a positioning context
+            element.appendChild(logdiv);
+
+            // Wait for DOM to be ready
+            function initializeWidget() {
+                """ + iife_script + """
+                logdiv.innerText += '\\nLog: IIFE loaded';
+                const {state, drawScene, setAnimationState, canvas, animBtn, style} = modules['webgl-torus.js'];
+
+                // Validate canvas visibility
+                if (canvas.offsetWidth === 0 || canvas.offsetHeight === 0) {
+                    logdiv.innerText += '\\nLog: Canvas invisible!';
+                    console.error('Canvas has zero size: offsetWidth=' + canvas.offsetWidth + ', offsetHeight=' + canvas.offsetHeight);
                 }
-            );
-            animBtn.addEventListener('click', (e) => {
+
+                // Validate WebGL context
+                const gl = canvas.getContext('webgl');
+                if (!gl) {
+                    logdiv.innerText += '\\nLog: WebGL failed!';
+                    console.error('WebGL context initialization failed');
+                    return;
+                }
+
+                // Set canvas size explicitly
+                canvas.width = 400;
+                canvas.height = 400;
+                canvas.style.width = '400px';
+                canvas.style.height = '400px';
+                logdiv.innerText += '\\nLog: Canvas set';
+
+                // Initialize traitlets
+                console.log('Initial animate:', model.get('animate'));
+                console.log('Initial hide_button:', model.get('hide_button'));
+                style.hideButton = model.get('hide_button');
+                setAnimationState(model.get('animate'));
+                animBtn.style.display = style.hideButton ? 'none' : 'block';
+                logdiv.innerText += '\\nLog: Traitlets set';
+
+                // Traitlet change handlers
+                model.on('change:animate', () => {
+                    console.log('animate changed:', model.get('animate'));
+                    setAnimationState(model.get('animate'));
+                    logdiv.innerText += '\\nLog: animate=' + model.get('animate');
+                });
+                model.on('change:hide_button', () => {
+                    console.log('hide_button changed:', model.get('hide_button'));
+                    style.hideButton = model.get('hide_button');
+                    animBtn.style.display = style.hideButton ? 'none' : 'block';
+                    logdiv.innerText += '\\nLog: hide_button=' + model.get('hide_button');
+                });
+
+                // Event handlers
+                canvas.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    console.log('Touchstart: setting animate to false');
+                    model.set('animate', false);
+                    model.save_changes();
+                });
+                canvas.addEventListener('mousedown', (e) => {
+                    console.log('Mousedown: setting animate to false');
+                    model.set('animate', false);
+                    model.save_changes();
+                });
+                animBtn.addEventListener('click', (e) => {
+                    console.log('Button click: setting animate to true');
                     model.set('animate', true);
                     model.save_changes();
-                } 
-            );
+                });
+
+                // Force initial render
+                drawScene();
+                logdiv.innerText += '\\nLog: Rendered';
+            }
+
+            // Delay initialization until DOM is ready
+            if (document.readyState === 'complete' || document.readyState === 'interactive') {
+                initializeWidget();
+            } else {
+                document.addEventListener('DOMContentLoaded', initializeWidget);
+            }
         }
         export default {render};
         """
-
-        # Traitlets
         animate = traitlets.Bool(default_value=True).tag(sync=True)
         hide_button = traitlets.Bool(default_value=False).tag(sync=True)
 
