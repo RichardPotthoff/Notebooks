@@ -1038,8 +1038,14 @@ def _(vfs):
     wrapper.style.display = "inline-block";
 
     export const hint = document.createElement("div");
-    hint.innerText = "Colors indicate surface normal directions: +xyz=rgb, -xyz=cmy \nDrag to rotate the view.\nelementIsDefined="+elementIsDefined+"\ntypeof element="+(typeof element)+
-    "\ntypeof element.logdiv="+(typeof element.logdiv);
+    hint.innerText = "Colors indicate surface normal directions: +xyz=rgb, -xyz=cmy \nDrag to rotate the view.";
+
+    if (typeof logdiv==='undefined'){ hint.innerText+="\nelementIsDefined="+elementIsDefined;
+    }
+    else{
+    logdiv.innerText+="\nelementIsDefined="+elementIsDefined;
+    }
+
     wrapper.appendChild(hint);
     if (!(typeof element.logdiv==='undefined')) {
     element.logdiv.innerText+="initializing";
@@ -1211,7 +1217,6 @@ def _(vfs):
 
 
     function initialize() {
-    hint.innerText+="\ninitializing";
         let scale, epath, spath;
     //  epath=getOutlinePath("Plain",{scale:15});    
     //  spath=getOutlinePath("Plain",{scale:0.5});
@@ -2116,10 +2121,10 @@ def _(mo):
 @app.cell
 def _(anywidget, iife_script, traitlets):
     class TorusWidget(anywidget.AnyWidget):
-        _esm = """
+        _esm = r"""
         function render({ model, el:element }) {
             // Create debug div as an overlay
-            let logdiv = document.createElement('div');
+            const logdiv = document.createElement('div');
             logdiv.style.position = 'absolute';
             logdiv.style.top = '10px';
             logdiv.style.right = '10px';
@@ -2137,20 +2142,20 @@ def _(anywidget, iife_script, traitlets):
 
             // Wait for DOM to be ready
             function initializeWidget() {
-                """ + iife_script + """
-                logdiv.innerText += '\\nLog: IIFE loaded';
+                """ + iife_script + r"""
+                logdiv.innerText += '\nLog: IIFE loaded';
                 const {state, drawScene, setAnimationState, canvas, animBtn, style} = modules['webgl-torus.js'];
 
                 // Validate canvas visibility
                 if (canvas.offsetWidth === 0 || canvas.offsetHeight === 0) {
-                    logdiv.innerText += '\\nLog: Canvas invisible!';
+                    logdiv.innerText += '\nLog: Canvas invisible!';
                     console.error('Canvas has zero size: offsetWidth=' + canvas.offsetWidth + ', offsetHeight=' + canvas.offsetHeight);
                 }
 
                 // Validate WebGL context
                 const gl = canvas.getContext('webgl');
                 if (!gl) {
-                    logdiv.innerText += '\\nLog: WebGL failed!';
+                    logdiv.innerText += '\nLog: WebGL failed!';
                     console.error('WebGL context initialization failed');
                     return;
                 }
@@ -2160,7 +2165,7 @@ def _(anywidget, iife_script, traitlets):
                 canvas.height = 400;
                 canvas.style.width = '400px';
                 canvas.style.height = '400px';
-                logdiv.innerText += '\\nLog: Canvas set';
+                logdiv.innerText += '\nLog: Canvas set';
 
                 // Initialize traitlets
                 console.log('Initial animate:', model.get('animate'));
@@ -2168,19 +2173,19 @@ def _(anywidget, iife_script, traitlets):
                 style.hideButton = model.get('hide_button');
                 setAnimationState(model.get('animate'));
                 animBtn.style.display = style.hideButton ? 'none' : 'block';
-                logdiv.innerText += '\\nLog: Traitlets set';
+                logdiv.innerText += '\nLog: Traitlets set';
 
                 // Traitlet change handlers
                 model.on('change:animate', () => {
                     console.log('animate changed:', model.get('animate'));
                     setAnimationState(model.get('animate'));
-                    logdiv.innerText += '\\nLog: animate=' + model.get('animate');
+                    logdiv.innerText += '\nLog: animate=' + model.get('animate');
                 });
                 model.on('change:hide_button', () => {
                     console.log('hide_button changed:', model.get('hide_button'));
                     style.hideButton = model.get('hide_button');
                     animBtn.style.display = style.hideButton ? 'none' : 'block';
-                    logdiv.innerText += '\\nLog: hide_button=' + model.get('hide_button');
+                    logdiv.innerText += '\nLog: hide_button=' + model.get('hide_button');
                 });
 
                 // Event handlers
@@ -2202,8 +2207,8 @@ def _(anywidget, iife_script, traitlets):
                 });
 
                 // Force initial render
-                drawScene();
-                logdiv.innerText += '\\nLog: Rendered';
+    //            drawScene(); //causes the animation rate to double
+    //            logdiv.innerText += '\nLog: Rendered';
             }
 
             // Delay initialization until DOM is ready
