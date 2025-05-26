@@ -114,7 +114,12 @@ def _():
             return super().__getitem__(normalized_key)
         @property
         def open(self):
-            return lambda *args,**kwargs: self._open(*args, **kwargs)
+            return self.open_with_cwd()
+        
+        def open_with_cwd(self, cwd=None):
+            effective_cwd = cwd if cwd is not None else self.default_cwd
+            return lambda *args,**kwargs: self._open(*args, **(dict(cwd=effective_cwd) | kwargs))
+        
         def _open(self, path, mode='r', cwd=None):
             """
             Open a file in the virtual filesystem.
@@ -250,7 +255,6 @@ def _(vfs):
     es6_html_to_iife_html_code=r"""
     import re
     import os
-    from bs4 import BeautifulSoup
     from collections import defaultdict
 
     def combine_patterns(*patterns):
@@ -397,6 +401,7 @@ def _(vfs):
       return iife_content
 
     def process_html(html_path,minify=False,output_file='output.html',open=open):
+        from bs4 import BeautifulSoup
         with open(html_path, 'r') as file:
             soup = BeautifulSoup(file, 'html.parser')
 
@@ -1382,6 +1387,118 @@ def _(vfs):
 
 @app.cell(hide_code=True)
 def _(mo):
+    mo.md(r"""### interaction.js""")
+    return
+
+
+@app.cell
+def _(vfs):
+    interaction_js = r"""
+    // TouchHandler: Handles single-touch/mouse for TrackpadWidget
+    export class TouchHandler {
+      constructor(c, cb) {
+        if (!c || !(c instanceof HTMLCanvasElement)) {
+          console.error('TouchHandler: Invalid canvas', c);
+          throw new Error('Invalid canvas');
+        }
+        this.c = c;
+        this.cb = cb || {};
+        this.d = false;
+        this.x = 0;
+        this.y = 0;
+        this.init();
+      }
+
+      init() {
+        console.log('TouchHandler: Initializing on canvas', this.c);
+        const evts = [
+          ['touchstart', e => this.hS(e)],
+          ['touchmove', e => this.hM(e)],
+          ['touchend', e => this.hE(e)],
+          ['mousedown', e => this.hMD(e)],
+          ['mousemove', e => this.hMM(e)],
+          ['mouseup', e => this.hMU(e)]
+        ];
+        evts.forEach(([t, f]) => {
+          this.c.addEventListener(t, f.bind(this));
+          console.log('TouchHandler: Bound event', t);
+        });
+        document.addEventListener('touchmove', e => {
+          if (e.target === this.c) e.preventDefault();
+        }, { passive: false });
+      }
+
+      pos(e) {
+        const r = this.c.getBoundingClientRect();
+        const t = e.touches?.[0] || e.changedTouches?.[0] || e;
+        const x = t.clientX - r.left;
+        const y = t.clientY - r.top;
+        console.log('TouchHandler: pos', { clientX: t.clientX, left: r.left, x, clientY: t.clientY, top: r.top, y });
+        return { x: x, y: y };
+      }
+
+      hS(e) {
+        e.preventDefault();
+        this.d = true;
+        const { x, y } = this.pos(e);
+        this.x = x;
+        this.y = y;
+        console.log('TouchHandler: touchstart', { x, y });
+        if (this.cb.start) this.cb.start(x, y);
+      }
+
+      hM(e) {
+        e.preventDefault();
+        if (!this.d) return;
+        const { x, y } = this.pos(e);
+        const dx = x - this.x;
+        const dy = y - this.y;
+        console.log('TouchHandler: touchmove', { x, y, dx, dy });
+        if (this.cb.move) this.cb.move(dx, dy, x, y);
+        this.x = x;
+        this.y = y;
+      }
+
+      hE(e) {
+        e.preventDefault();
+        this.d = false;
+        console.log('TouchHandler: touchend');
+        if (this.cb.end) this.cb.end();
+      }
+
+      hMD(e) {
+        this.d = true;
+        const { x, y } = this.pos(e);
+        this.x = x;
+        this.y = y;
+        console.log('TouchHandler: mousedown', { x, y });
+        if (this.cb.start) this.cb.start(x, y);
+      }
+
+      hMM(e) {
+        if (!this.d) return;
+        const { x, y } = this.pos(e);
+        const dx = x - this.x;
+        const dy = y - this.y;
+        console.log('TouchHandler: mousemove', { x, y, dx, dy });
+        if (this.cb.move) this.cb.move(dx, dy, x, y);
+        this.x = x;
+        this.y = y;
+      }
+
+      hMU(e) {
+        this.d = false;
+        console.log('TouchHandler: mouseup');
+        if (this.cb.end) this.cb.end();
+      }
+    }
+    """
+    vfs["interaction.js"]=interaction_js
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
     mo.md(
         r"""
     ### m4_cMaj.js
@@ -2237,6 +2354,12 @@ def _(mo, torus_widget, torus_widget2):
 
 
 @app.cell
+def _(mo, torus_widget):
+    mo.ui.anywidget(torus_widget)
+    return
+
+
+@app.cell
 def _(torus_widget):
     torus_widget.hide_button=False
     torus_widget.hide_button
@@ -2391,6 +2514,476 @@ def _(Segments2Complex, cookiecutters_json, mo, pi, run_python_tests_btn):
         ax2.set_aspect('equal')
         print(f"{Duck_points=}, {Blade_points=},{Duck_points*Blade_points=}")
         return fig
+    _()
+    return
+
+
+@app.cell
+def _(mo):
+    mo.md(r"""## Trackpad""")
+    return
+
+
+@app.cell
+def _(mo):
+    mo.md(r"""### trackpad.js""")
+    return
+
+
+@app.cell
+def _(vfs):
+    trackpad_js = r"""
+    import { TouchHandler } from './interaction.js';
+    export function initTrackpad(canvas, logdiv, model) {
+      const ctx = canvas.getContext('2d');
+      let sx, sy, ex, ey, len = 0, ang = 0; // Segment start/end, length, angle
+      let segs = []; // Segment array
+      let editIdx = -1; // Editing index (-1: end, >=0: segment)
+
+      // Resize canvas to fit container
+      const resize = () => {
+        const rect = canvas.getBoundingClientRect();
+        canvas.width = rect.width;
+        canvas.height = rect.height;
+        draw();
+      };
+      window.addEventListener('resize', resize);
+      resize();
+
+      const draw = () => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        // Draw segments
+        ctx.strokeStyle = 'black';
+        ctx.lineWidth = 2;
+        let x = canvas.width / 2, y = canvas.height / 2, h = 0;
+        segs.forEach(s => {
+          const r = s.angle ? Math.abs(s.length / (s.angle * Math.PI / 180)) : 0;
+          const steps = s.angle ? Math.max(10, Math.floor(Math.abs(s.length) / 5)) : 1;
+          const sl = s.length / steps;
+          const sa = (s.angle * Math.PI / 180) / steps;
+          ctx.beginPath();
+          ctx.moveTo(x, y);
+          for (let i = 0; i < steps; i++) {
+            x += sl * Math.cos(h);
+            y += sl * Math.sin(h);
+            h += sa;
+            ctx.lineTo(x, y);
+          }
+          ctx.stroke();
+        });
+        // Draw preview
+        if (sx !== undefined && ex !== undefined) {
+          ctx.strokeStyle = 'gray';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(sx, sy);
+          const r = ang ? Math.abs(len / ang) : 0;
+          const steps = ang ? Math.max(10, Math.floor(Math.abs(len) / 5)) : 1;
+          const sl = len / steps;
+          const sa = ang / steps;
+          let px = sx, py = sy, ph = editIdx >= 0 ? segs[editIdx].h : h;
+          for (let i = 0; i < steps; i++) {
+            px += sl * Math.cos(ph);
+            py += sl * Math.sin(ph);
+            ph += sa;
+            ctx.lineTo(px, py);
+          }
+          ctx.stroke();
+          ctx.strokeStyle = 'black';
+          ctx.lineWidth = 2;
+        }
+        // Draw cursors
+        ctx.beginPath();
+        ctx.arc(sx || canvas.width / 2, sy || canvas.height / 2, 5, 0, 2 * Math.PI);
+        ctx.fillStyle = 'red';
+        ctx.fill();
+        ctx.stroke();
+        if (ex !== undefined) {
+          ctx.beginPath();
+          ctx.arc(ex, ey, 5, 0, 2 * Math.PI);
+          ctx.fillStyle = 'green';
+          ctx.fill();
+          ctx.stroke();
+        }
+      };
+
+      new TouchHandler(canvas, {
+        start: (x, y) => {
+          sx = x;
+          sy = y;
+          ex = x;
+          ey = y;
+          len = 0;
+          ang = 0;
+          if (editIdx === -1) {
+            segs.push({ length: 0, angle: 0, h: segs.length ? segs[segs.length - 1].h : 0 });
+            editIdx = segs.length - 1;
+          }
+          model.set('animate', false);
+          model.save_changes();
+          logdiv.innerText = `Trackpad Log:\nStart: (${x.toFixed(1)}, ${y.toFixed(1)})`;
+          draw();
+        },
+        move: (dx, dy, x, y) => {
+          ex = x;
+          ey = y;
+          const sdx = x - sx;
+          const sdy = y - sy;
+          len = Math.hypot(sdx, sdy);
+          const sa = Math.atan2(sdy, sdx);
+          const h = editIdx >= 0 ? segs[editIdx].h : (segs.length ? segs[segs.length - 1].h : 0);
+          ang = (sa - h) * 2;
+          ang = ((ang + 2 * Math.PI + 4 * Math.PI) % (4 * Math.PI)) - 2 * Math.PI;
+          if (editIdx >= 0) {
+            segs[editIdx] = { length: len, angle: ang * 180 / Math.PI, h };
+          }
+          logdiv.innerText = `Trackpad Log:\nStart: (${sx.toFixed(1)}, ${sy.toFixed(1)})\nMove: dx=${dx.toFixed(1)}, dy=${dy.toFixed(1)} (3D rot), len=${len.toFixed(1)}, ang=${(ang * 180 / Math.PI).toFixed(1)}° (2D)`;
+          draw();
+        },
+        end: () => {
+          if (editIdx === -1) editIdx = segs.length - 1;
+          sx = undefined;
+          ex = undefined;
+          model.set('animate', false);
+          model.save_changes();
+          logdiv.innerText = `Trackpad Log:\nEnd: Segment: ${len.toFixed(1)}px, ${(ang * 180 / Math.PI).toFixed(1)}°`;
+          draw();
+        },
+        zoom: (ds) => {
+          logdiv.innerText = `Trackpad Log:\nZoom: ${ds.toFixed(3)}`;
+        },
+        pan: (dx, dy) => {
+          logdiv.innerText = `Trackpad Log:\nPan: (${dx.toFixed(1)}, ${dy.toFixed(1)})`;
+        }
+      });
+      draw();
+    }
+    """
+    vfs["trackpad.js"]=trackpad_js
+    return (trackpad_js,)
+
+
+@app.cell
+def _(mo):
+    mo.md(r"""### class TrackpadWidget""")
+    return
+
+
+@app.cell
+def _(ES6converter, trackpad_js, vfs):
+    (trackpad_js)
+    trackpad_iife_js=ES6converter.convertES6toIIFE(r'import "./trackpad.js";', minify=False,open=vfs.open)
+    return (trackpad_iife_js,)
+
+
+@app.cell
+def _(anywidget, trackpad_iife_js, traitlets):
+    class TrackpadWidget(anywidget.AnyWidget):
+        _esm = trackpad_iife_js+r"""
+        function render({ model, el }) {
+          const log = document.createElement('div');
+          log.style.position = 'absolute';
+          log.style.top = '10px';
+          log.style.right = '10px';
+          log.style.maxWidth = '200px';
+          log.style.maxHeight = '100px';
+          log.style.overflow = 'auto';
+          log.style.background = 'rgba(255, 255, 255, 0.8)';
+          log.style.border = '1px solid red';
+          log.style.padding = '5px';
+          log.style.fontSize = '12px';
+          log.style.zIndex = '20';
+          log.innerText = 'Trackpad Log:';
+          const c = document.createElement('canvas');
+          c.style.width = '400px';
+          c.style.height = '400px';
+          el.style.position = 'relative';
+          el.appendChild(c);
+          el.appendChild(log);
+          // Ensure IIFE modules are loaded
+          if (!window.modules || !window.modules['trackpad.js']) {
+            log.innerText += '\nError: trackpad.js not loaded';
+            return;
+          }
+          const { initTrackpad } = window.modules['trackpad.js'];
+          initTrackpad(c, log, model);
+        }
+        export default {render};
+        """
+        animate = traitlets.Bool(default_value=True).tag(sync=True)
+    trackpad_widget = TrackpadWidget()
+    return
+
+
+@app.cell
+def _(anywidget, traitlets, vfs):
+    def _():
+        iife_prefix = r"""
+        (function(global) {
+          class TouchHandler {
+            constructor(c, cb) {
+              if (!c || !(c instanceof HTMLCanvasElement)) {
+                console.error('TouchHandler: Invalid canvas', c);
+                throw new Error('Invalid canvas');
+              }
+              this.c = c;
+              this.cb = cb || {};
+              this.d = false;
+              this.x = 0;
+              this.y = 0;
+              this.init();
+            }
+            init() {
+              console.log('TouchHandler: Initializing on canvas', this.c);
+              const evts = [
+                ['touchstart', e => this.hS(e)],
+                ['touchmove', e => this.hM(e)],
+                ['touchend', e => this.hE(e)],
+                ['mousedown', e => this.hMD(e)],
+                ['mousemove', e => this.hMM(e)],
+                ['mouseup', e => this.hMU(e)]
+              ];
+              evts.forEach(([t, f]) => {
+                this.c.addEventListener(t, f.bind(this));
+                console.log('Bound event', t);
+              });
+              document.addEventListener('touchmove', e => {
+                if (e.target === this.c) e.preventDefault();
+              }, { passive: false });
+            }
+            pos(e) {
+              const r = this.c.getBoundingClientRect();
+              const t = e.touches?.[0] || e.changedTouches?.[0] || e;
+              const x = t.clientX - r.left;
+              const y = t.clientY - r.top;
+              console.log('pos', { clientX: t.clientX, left: r.left, x, clientY: t.clientY, top: r.top, y });
+              return { x, y };
+            }
+            hS(e) {
+              e.preventDefault();
+              this.d = true;
+              const { x, y } = this.pos(e);
+              this.x = x;
+              this.y = y;
+              console.log('touchstart', { x, y });
+              if (this.cb.start) this.cb.start(x, y);
+            }
+            hM(e) {
+              e.preventDefault();
+              if (!this.d) return;
+              const { x, y } = this.pos(e);
+              const dx = x - this.x;
+              const dy = y - this.y;
+              console.log('touchmove', { x, y, dx, dy });
+              if (this.cb.move) this.cb.move(dx, dy, x, y);
+              this.x = x;
+              this.y = y;
+            }
+            hE(e) {
+              e.preventDefault();
+              this.d = false;
+              console.log('touchend');
+              if (this.cb.end) this.cb.end();
+            }
+            hMD(e) {
+              this.d = true;
+              const { x, y } = this.pos(e);
+              this.x = x;
+              this.y = y;
+              console.log('mousedown', { x, y });
+              if (this.cb.start) this.cb.start(x, y);
+            }
+            hMM(e) {
+              if (!this.d) return;
+              const { x, y } = this.pos(e);
+              const dx = x - this.x;
+              const dy = y - this.y;
+              console.log('mousemove', { x, y, dx, dy });
+              if (this.cb.move) this.cb.move(dx, dy, x, y);
+              this.x = x;
+              this.y = y;
+            }
+            hMU(e) {
+              this.d = false;
+              console.log('mouseup');
+              if (this.cb.end) this.cb.end();
+            }
+          }
+          if (!('modules' in global)) {
+            global['modules'] = {};
+          }
+          global.modules['interaction.js'] = { TouchHandler };
+        })(window);
+        (function(global) {
+          let { TouchHandler } = global.modules['interaction.js'];
+          function initTrackpad(canvas, logdiv, model) {
+            console.log('Trackpad: Starting initTrackpad');
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
+              console.error('Trackpad: Failed to get 2D context');
+              logdiv.innerText += '\nError: Failed to get 2D context';
+              return;
+            }
+            logdiv.innerText += '\nTrackpad: Context initialized';
+            canvas.width = 400;
+            canvas.height = 400;
+            console.log('Trackpad: Set canvas size', { width: canvas.width, height: canvas.height });
+            let x, y;
+            const draw = () => {
+              try {
+                console.log('Trackpad: Drawing');
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                logdiv.innerText += '\nTrackpad: Cleared canvas';
+                if (x !== undefined && y !== undefined) {
+                  ctx.beginPath();
+                  ctx.arc(x, y, 5, 0, 2 * Math.PI);
+                  ctx.fillStyle = 'red';
+                  ctx.fill();
+                  ctx.strokeStyle = 'black';
+                  ctx.stroke();
+                  logdiv.innerText += '\nTrackpad: Drew red dot';
+                }
+              } catch (err) {
+                console.error('Trackpad: Draw error', err);
+                logdiv.innerText += `\nTrackpad: Draw error: ${err.message}`;
+              }
+            };
+            new TouchHandler(canvas, {
+              start: (px, py) => {
+                console.log('Trackpad: start callback', { x: px, y: py });
+                x = px;
+                y = py;
+                logdiv.innerText += `\nStart: (${px.toFixed(1)}, ${py.toFixed(1)})`;
+                draw();
+              },
+              move: (dx, dy, px, py) => {
+                console.log('Trackpad: move callback', { dx, dy, x: px, y: py });
+                x = px;
+                y = py;
+                logdiv.innerText += `\nMove: (${px.toFixed(1)}, ${py.toFixed(1)})`;
+                draw();
+              },
+              end: () => {
+                console.log('Trackpad: end callback');
+                x = undefined;
+                y = undefined;
+                logdiv.innerText += '\nEnd';
+                draw();
+              }
+            });
+            console.log('Trackpad: Initialized');
+            draw();
+          }
+          if (!('modules' in global)) {
+            global['modules'] = {};
+          }
+          global.modules['trackpad.js'] = { initTrackpad };
+        })(window);
+        """
+        vfs["trackpad.js"] = r"""
+        import { TouchHandler } from './interaction.js';
+        export function initTrackpad(canvas, logdiv, model) {
+          console.log('Trackpad: Starting initTrackpad');
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            console.error('Trackpad: Failed to get 2D context');
+            logdiv.innerText += '\nError: Failed to get 2D context';
+            return;
+          }
+          logdiv.innerText += '\nTrackpad: Context initialized';
+          canvas.width = 400;
+          canvas.height = 400;
+          console.log('Trackpad: Set canvas size', { width: canvas.width, height: canvas.height });
+          let x, y;
+
+          const draw = () => {
+            try {
+              console.log('Trackpad: Drawing');
+              ctx.clearRect(0, 0, canvas.width, canvas.height);
+              logdiv.innerText += '\nTrackpad: Cleared canvas';
+              if (x !== undefined && y !== undefined) {
+                ctx.beginPath();
+                ctx.arc(x, y, 5, 0, 2 * Math.PI);
+                ctx.fillStyle = 'red';
+                ctx.fill();
+                ctx.strokeStyle = 'black';
+                ctx.stroke();
+                logdiv.innerText += '\nTrackpad: Drew red dot';
+              }
+            } catch (err) {
+              console.error('Trackpad: Draw error', err);
+              logdiv.innerText += `\nTrackpad: Draw error: ${err.message}`;
+            }
+          };
+
+          new TouchHandler(canvas, {
+            start: (px, py) => {
+              console.log('Trackpad: start callback', { x: px, y: py });
+              x = px;
+              y = py;
+              logdiv.innerText += `\nStart: (${px.toFixed(1)}, ${py.toFixed(1)})`;
+              draw();
+            },
+            move: (dx, dy, px, py) => {
+              console.log('Trackpad: move callback', { dx, dy, x: px, y: py });
+              x = px;
+              y = py;
+              logdiv.innerText += `\nMove: (${px.toFixed(1)}, ${py.toFixed(1)})`;
+              draw();
+            },
+            end: () => {
+              console.log('Trackpad: end callback');
+              x = undefined;
+              y = undefined;
+              logdiv.innerText += '\nEnd';
+              draw();
+            }
+          });
+          console.log('Trackpad: Initialized');
+          draw();
+        }
+        """
+        class TrackpadWidget(anywidget.AnyWidget):
+            _esm = iife_prefix + r"""
+            function render({ model, el }) {
+              console.log('TrackpadWidget: Starting render');
+              const log = document.createElement('div');
+              log.style.position = 'absolute';
+              log.style.top = '10px';
+              log.style.right = '10px';
+              log.style.maxWidth = '200px';
+              log.style.maxHeight = '100px';
+              log.style.overflow = 'auto';
+              log.style.background = 'rgba(255, 255, 255, 0.8)';
+              log.style.border = '1px solid red';
+              log.style.padding = '5px';
+              log.style.fontSize = '12px';
+              log.style.zIndex = '20';
+              log.innerText = 'Trackpad Log:';
+              const c = document.createElement('canvas');
+              c.style.width = '400px';
+              c.style.height = '400px';
+              el.style.position = 'relative';
+              el.appendChild(c);
+              el.appendChild(log);
+              log.innerText += '\nTrackpadWidget: Canvas created';
+              if (!window.modules || !window.modules['trackpad.js']) {
+                log.innerText += '\nError: trackpad.js not loaded';
+                console.error('TrackpadWidget: Modules not loaded', window.modules);
+                return;
+              }
+              const { initTrackpad } = window.modules['trackpad.js'];
+              console.log('TrackpadWidget: Calling initTrackpad');
+              initTrackpad(c, log, model);
+              log.innerText += '\nTrackpadWidget: initTrackpad called';
+            }
+            export default {render};
+            """
+            animate = traitlets.Bool(default_value=True).tag(sync=True)
+        trackpad_widget = TrackpadWidget()
+        return trackpad_widget
+
+
     _()
     return
 
