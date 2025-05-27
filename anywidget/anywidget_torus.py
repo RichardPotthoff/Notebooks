@@ -59,6 +59,7 @@ def _():
     import anywidget
     import traitlets
     from cmath import inf,exp,pi
+    import re
 
     # Custom StringIO class to handle VFS updates
     class VFSStringIO(io.StringIO):
@@ -115,11 +116,11 @@ def _():
         @property
         def open(self):
             return self.open_with_cwd()
-        
+
         def open_with_cwd(self, cwd=None):
             effective_cwd = cwd if cwd is not None else self.default_cwd
             return lambda *args,**kwargs: self._open(*args, **(dict(cwd=effective_cwd) | kwargs))
-        
+
         def _open(self, path, mode='r', cwd=None):
             """
             Open a file in the virtual filesystem.
@@ -2203,12 +2204,21 @@ def _(mo):
 
 
 @app.cell
-def _(ES6converter, vfs):
+def _():
+    return
+
+
+@app.cell
+def _(iife_script, vfs, webgl_torus_html):
     #mo.stop(not write_index_file_btn.value,write_index_file_btn)
     #copy index.html from virtual file system to disk
     print('"webgl-torus.html" with ES6 module references  -->  stand alone minified "index.html" ')
-    ES6converter.process_html('webgl-torus.html',minify=False,output_file='index.html',open=vfs.open)
-    index_html=vfs['index.html'] 
+    #ES6converter.process_html('webgl-torus.html',minify=False,output_file='index.html',open=vfs.open)
+    #index_html=vfs['index.html'] 
+    _ss=webgl_torus_html.find('<script')
+    _se=webgl_torus_html.find('</script>')
+    index_html=webgl_torus_html[:_ss]+'<script>'+iife_script+webgl_torus_html[_se:]
+    vfs['index.html']=index_html
     print(index_html[:500])
     with open('index.html','w') as f: f.write(index_html)
     return (index_html,)
@@ -2400,8 +2410,9 @@ def _(mo):
 
 
 @app.cell
-def _(base64, export_vfs_button, mo, vfs):
+def _(base64, export_vfs_button, index_html, mo, vfs):
     mo.stop(not export_vfs_button.value, export_vfs_button)
+    (index_html)
     def download_data(filename,data):
             b64_data = base64.b64encode(data).decode()
             download_link = f'<a download="{filename}" href="data:application/zip;base64,{b64_data}" style="display:block;">Click to download {filename}</a>' 
@@ -2985,6 +2996,17 @@ def _(anywidget, traitlets, vfs):
 
 
     _()
+    return
+
+
+@app.cell
+def _(vfs):
+    print(list(vfs.keys()))
+    return
+
+
+@app.cell
+def _():
     return
 
 
