@@ -4,12 +4,27 @@ __generated_with = "0.13.10"
 app = marimo.App()
 
 with app.setup:
-    # Initialization code that runs before all other cells
-    pass
+    # Initialization code that runs before all other cell
+    import marimo as mo
+    from time import perf_counter
+    import os
+    import io
+    import sys
+    import zipfile
+    import base64
+    from pathlib import PurePath
+    from IPython.display import Javascript, display
+    import ipywidgets as widgets
+    import anywidget
+    import traitlets
+    from cmath import inf,exp,pi
+    import re
+
+
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(
         r"""
     [![Run Jupyter Notebooks](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/RichardPotthoff/Notebooks/main?filepath=3Dpreview/3Dpreview.ipynb)
@@ -21,13 +36,13 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""# 3D webgl JavaScript test""")
     return
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(
         r"""
     ## Virtual File System (VFS)
@@ -39,183 +54,153 @@ def _(mo):
     return
 
 
-@app.cell
-def _():
-    import marimo as mo
-    return (mo,)
+@app.class_definition
+# Custom StringIO class to handle VFS updates
+class VFSStringIO(io.StringIO):
+      def __init__(self, vfs, path, initial_value='', mode='r'):
+        super().__init__(initial_value)
+        self.vfs = vfs
+        self.path = path
+        self.mode = mode
+        if mode == 'a':
+            self.seek(0, io.SEEK_END)
+
+      def close(self):
+        if self.mode in ('w', 'a'):
+            self.vfs[self.path] = self.getvalue()
+        super().close()
 
 
-@app.cell
-def _():
-    from time import perf_counter
-    import os
-    import sys
-    import io
-    import zipfile
-    import base64
-    from pathlib import PurePath
-    from IPython.display import Javascript, display
-    import ipywidgets as widgets
-    import anywidget
-    import traitlets
-    from cmath import inf,exp,pi
-    import re
+@app.class_definition
+# SimpleVFS class with support for 'r', 'w', and 'a' modes         
+class SimpleVFS(dict):
+    def __init__(self, mount_point='/', default_cwd='/', home_dir='/'):
+        """
+        Initialize the SimpleVFS with a mount point, default working directory, and home directory.
 
-    # Custom StringIO class to handle VFS updates
-    class VFSStringIO(io.StringIO):
-        def __init__(self, vfs, path, initial_value='', mode='r'):
-            super().__init__(initial_value)
-            self.vfs = vfs
-            self.path = path
-            self.mode = mode
-            if mode == 'a':
-                self.seek(0, io.SEEK_END)
+        Args:
+            mount_point (str): The root of the virtual filesystem (default: '/').
+            default_cwd (str, optional): The default current working directory (default: mount_point + '/').
+            home_dir (str, optional): The virtual home directory for '~/...' paths (default: mount_point + '/home').
+        """
+        super().__init__()
+        self.mount_point = PurePath(mount_point).as_posix()
+        # Default default_cwd to mount_poin if not provided
+        self.default_cwd = PurePath(default_cwd if default_cwd is not None else PurePath(self.mount_point)).as_posix()
+        # Default home_dir to mount_point if not provided
+        self.home_dir = PurePath(home_dir if home_dir is not None else PurePath(self.mount_point)).as_posix()
+        # Validate that default_cwd and home_dir are under the mount point
+        for path, name in [(self.default_cwd, 'default_cwd'), (self.home_dir, 'home_dir')]:
+            if not path.startswith(self.mount_point):
+                raise ValueError(f"{name.capitalize()} {path} must start with mount point {self.mount_point}")
 
-        def close(self):
-            if self.mode in ('w', 'a'):
-                self.vfs[self.path] = self.getvalue()
-            super().close()
+    def _normalize_path(self, path):
+        if not isinstance(path, str):
+            raise TypeError(f"Path must be a string, got {type(path)}")
+        normalized = PurePath(path).as_posix().lstrip('/')
+        if not normalized:
+            raise ValueError("Empty path is not allowed")
+        return normalized
 
-    # SimpleVFS class with support for 'r', 'w', and 'a' modes
-    class SimpleVFS(dict):
-        def __init__(self, mount_point='/', default_cwd='/', home_dir='/'):
-            """
-            Initialize the SimpleVFS with a mount point, default working directory, and home directory.
+    def __setitem__(self, key, value):
+        normalized_key = self._normalize_path(key)
+        super().__setitem__(normalized_key, value)
 
-            Args:
-                mount_point (str): The root of the virtual filesystem (default: '/').
-                default_cwd (str, optional): The default current working directory (default: mount_point + '/').
-                home_dir (str, optional): The virtual home directory for '~/...' paths (default: mount_point + '/home').
-            """
-            super().__init__()
-            self.mount_point = PurePath(mount_point).as_posix()
-            # Default default_cwd to mount_poin if not provided
-            self.default_cwd = PurePath(default_cwd if default_cwd is not None else PurePath(self.mount_point)).as_posix()
-            # Default home_dir to mount_point if not provided
-            self.home_dir = PurePath(home_dir if home_dir is not None else PurePath(self.mount_point)).as_posix()
-            # Validate that default_cwd and home_dir are under the mount point
-            for path, name in [(self.default_cwd, 'default_cwd'), (self.home_dir, 'home_dir')]:
-                if not path.startswith(self.mount_point):
-                    raise ValueError(f"{name.capitalize()} {path} must start with mount point {self.mount_point}")
+    def __getitem__(self, key):
+        normalized_key = self._normalize_path(key)
+        return super().__getitem__(normalized_key)
+    @property
+    def open(self):
+        return self.open_with_cwd()
 
-        def _normalize_path(self, path):
-            if not isinstance(path, str):
-                raise TypeError(f"Path must be a string, got {type(path)}")
-            normalized = PurePath(path).as_posix().lstrip('/')
-            if not normalized:
-                raise ValueError("Empty path is not allowed")
-            return normalized
+    def open_with_cwd(self, cwd=None):
+        effective_cwd = cwd if cwd is not None else self.default_cwd
+        return lambda *args,**kwargs: self._open(*args, **(dict(cwd=effective_cwd) | kwargs))
 
-        def __setitem__(self, key, value):
-            normalized_key = self._normalize_path(key)
-            super().__setitem__(normalized_key, value)
+    def _open(self, path, mode='r', cwd=None):
+        """
+        Open a file in the virtual filesystem.
 
-        def __getitem__(self, key):
-            normalized_key = self._normalize_path(key)
-            return super().__getitem__(normalized_key)
-        @property
-        def open(self):
-            return self.open_with_cwd()
+        Args:
+            path (str): The path to the file. Supports './' (relative to cwd), '~/' (relative to home_dir),
+                        absolute paths (starting with '/'), and relative paths.
+            mode (str): The mode ('r', 'w', 'a').
+            cwd (str, optional): The current working directory. Defaults to self.default_cwd.
+        """
+        if cwd is not None and not isinstance(cwd, str):
+            raise TypeError(f"cwd must be a string or None, got {type(cwd)}")
+        if cwd == '':
+            raise ValueError("cwd cannot be an empty string")
+        cwd = PurePath(cwd if cwd is not None else self.default_cwd)
+        path = PurePath(path)
 
-        def open_with_cwd(self, cwd=None):
-            effective_cwd = cwd if cwd is not None else self.default_cwd
-            return lambda *args,**kwargs: self._open(*args, **(dict(cwd=effective_cwd) | kwargs))
-
-        def _open(self, path, mode='r', cwd=None):
-            """
-            Open a file in the virtual filesystem.
-
-            Args:
-                path (str): The path to the file. Supports './' (relative to cwd), '~/' (relative to home_dir),
-                            absolute paths (starting with '/'), and relative paths.
-                mode (str): The mode ('r', 'w', 'a').
-                cwd (str, optional): The current working directory. Defaults to self.default_cwd.
-            """
-            if cwd is not None and not isinstance(cwd, str):
-                raise TypeError(f"cwd must be a string or None, got {type(cwd)}")
-            if cwd == '':
-                raise ValueError("cwd cannot be an empty string")
-            cwd = PurePath(cwd if cwd is not None else self.default_cwd)
-            path = PurePath(path)
-
-            # Handle '~/...' paths by replacing '~' with home_dir
-            if path.as_posix().startswith('~/'):
-                resolved_path = PurePath(self.home_dir) / path.as_posix()[2:]  # Skip '~/'
+        # Handle '~/...' paths by replacing '~' with home_dir
+        if path.as_posix().startswith('~/'):
+            resolved_path = PurePath(self.home_dir) / path.as_posix()[2:]  # Skip '~/'
+        else:
+            # Check if the path is absolute or relative
+            if path.is_absolute():
+                resolved_path = path
             else:
-                # Check if the path is absolute or relative
-                if path.is_absolute():
-                    resolved_path = path
-                else:
-                    # Relative path: resolve against cwd
-                    resolved_path = cwd / path
+                # Relative path: resolve against cwd
+                resolved_path = cwd / path
 
-            # Resolve the full path
-            full_path = resolved_path
-            full_path_str = full_path.as_posix()
+        # Resolve the full path
+        full_path = resolved_path
+        full_path_str = full_path.as_posix()
 
-            # Ensure the path starts with the mount point
-            try:
-                # This will raise a ValueError if full_path is not under mount_point
-                relative_path = PurePath(full_path_str).relative_to(self.mount_point).as_posix()
-            except ValueError:
-                raise ValueError(f"Path {full_path_str} is outside the mount point {self.mount_point}")
+        # Ensure the path starts with the mount point
+        try:
+            # This will raise a ValueError if full_path is not under mount_point
+            relative_path = PurePath(full_path_str).relative_to(self.mount_point).as_posix()
+        except ValueError:
+            raise ValueError(f"Path {full_path_str} is outside the mount point {self.mount_point}")
 
-            # The relative_path is the key for storage (already has leading '/' stripped by relative_to)
-            normalized_path = relative_path
-            if not normalized_path and mode != 'w':
-                raise ValueError("Cannot open the root mount point in read or append mode")
+        # The relative_path is the key for storage (already has leading '/' stripped by relative_to)
+        normalized_path = relative_path
+        if not normalized_path and mode != 'w':
+            raise ValueError("Cannot open the root mount point in read or append mode")
 
-            if mode == 'r':
-                content = self.get(normalized_path)
-                if content is None:
-                    raise FileNotFoundError(f"No such file: {normalized_path}")
-                return VFSStringIO(self, normalized_path, initial_value=content, mode=mode)
-            elif mode == 'w':
-                return VFSStringIO(self, normalized_path, initial_value='', mode=mode)
-            elif mode == 'a':
-                content = self.get(normalized_path, '')
-                return VFSStringIO(self, normalized_path, initial_value=content, mode=mode)
-            else:
-                raise ValueError(f"Unsupported mode: {mode}")
+        if mode == 'r':
+            content = self.get(normalized_path)
+            if content is None:
+                raise FileNotFoundError(f"No such file: {normalized_path}")
+            return VFSStringIO(self, normalized_path, initial_value=content, mode=mode)
+        elif mode == 'w':
+            return VFSStringIO(self, normalized_path, initial_value='', mode=mode)
+        elif mode == 'a':
+            content = self.get(normalized_path, '')
+            return VFSStringIO(self, normalized_path, initial_value=content, mode=mode)
+        else:
+            raise ValueError(f"Unsupported mode: {mode}")
 
-        def archive(self, filename_prefix="vfs_archive"):
-            """
-            Create a zip archive of all files in the VFS and return the raw bytes.
+    def archive(self, filename_prefix="vfs_archive"):
+        """
+        Create a zip archive of all files in the VFS and return the raw bytes.
 
-            Args:
-                filename_prefix (str): Prefix for the archive filename (default: "vfs_archive").
+        Args:
+            filename_prefix (str): Prefix for the archive filename (default: "vfs_archive").
 
-            Returns:
-                bytes: Raw bytes of the zip archive.
-            """
-            # Create a bytes buffer for the zip file
-            zip_buffer = io.BytesIO()
+        Returns:
+            bytes: Raw bytes of the zip archive.
+        """
+        # Create a bytes buffer for the zip file
+        zip_buffer = io.BytesIO()
 
-            # Create a zip file in memory
-            with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
-                for file_path, content in self.items():
-                    # Ensure file_path is a string and normalize it
-                    normalized_path = self._normalize_path(file_path)
-                    # Write each file to the zip with its original name
-                    zip_file.writestr(normalized_path, content)
+        # Create a zip file in memory
+        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+            for file_path, content in self.items():
+                # Ensure file_path is a string and normalize it
+                normalized_path = self._normalize_path(file_path)
+                # Write each file to the zip with its original name
+                zip_file.writestr(normalized_path, content)
 
-            # Get the zip data as bytes and return
-            return zip_buffer.getvalue()
-    return (
-        SimpleVFS,
-        anywidget,
-        base64,
-        exp,
-        inf,
-        perf_counter,
-        pi,
-        sys,
-        traitlets,
-    )
+        # Get the zip data as bytes and return
+        return zip_buffer.getvalue()
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(
         r"""
     ## Module Loader
@@ -225,28 +210,26 @@ def _(mo):
     return
 
 
-@app.cell
-def _(sys):
-    def load_module(module_name, code):
-        import importlib
-        #if module_name in sys.modules:
-        #   return sys.modules[module_name]
-        spec = importlib.util.spec_from_loader(module_name, None)
-        module = importlib.util.module_from_spec(spec)
-        sys.modules[module_name] = module
-        exec(code, module.__dict__)
-        return module
-    return (load_module,)
+@app.function
+def load_module(module_name, code):
+    import importlib
+    #if module_name in sys.modules:
+    #   return sys.modules[module_name]
+    spec = importlib.util.spec_from_loader(module_name, None)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    exec(code, module.__dict__)
+    return module
 
 
 @app.cell
-def _(SimpleVFS):
+def _():
     vfs=SimpleVFS()
     return (vfs,)
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""## ES6 JavaScript to IIFE converter and minifyer (Python module)""")
     return
 
@@ -476,13 +459,13 @@ def _(vfs):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""## Load a Python module from the VFS""")
     return
 
 
 @app.cell
-def _(es6_html_to_iife_html_code, load_module):
+def _(es6_html_to_iife_html_code):
     ES6converter=load_module('es6_html_to_iife_html', es6_html_to_iife_html_code)
     #Set the modules "open" function to out vfs.create_open():
     #ES6converter.open=vfs.create_open()
@@ -497,7 +480,7 @@ def _(ES6converter):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(
         r"""
     ## Code generator for a Matrix ES6 JavaScript module
@@ -508,13 +491,13 @@ def _(mo):
 
 
 @app.cell
-def _(mo):
+def _():
     generate_m4_js_btn=mo.ui.run_button(label="generate m4_cMaj.js")
     return (generate_m4_js_btn,)
 
 
 @app.cell
-def _(generate_m4_js_btn, mo, sys, vfs):
+def _(generate_m4_js_btn, vfs):
     mo.stop(not generate_m4_js_btn.value,generate_m4_js_btn)
 
     def _():
@@ -936,13 +919,13 @@ def _(generate_m4_js_btn, mo, sys, vfs):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""## HTML & JavaScript files""")
     return
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""### webgl-torus.html""")
     return
 
@@ -966,7 +949,7 @@ def _(vfs):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""### webgl-torus.js""")
     return
 
@@ -1387,7 +1370,7 @@ def _(vfs):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""### interaction.js""")
     return
 
@@ -1499,7 +1482,7 @@ def _(vfs):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(
         r"""
     ### m4_cMaj.js
@@ -1633,7 +1616,7 @@ def _(vfs):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""### geometry.js""")
     return
 
@@ -1707,7 +1690,7 @@ def _(vfs):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""### turtle-graphics.js""")
     return
 
@@ -1872,7 +1855,7 @@ def _(vfs):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""### cookiecutters.json""")
     return
 
@@ -2139,7 +2122,7 @@ def _(vfs):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""### cookiecutters.js""")
     return
 
@@ -2152,7 +2135,7 @@ def _(cookiecutters_json, vfs):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""##""")
     return
 
@@ -2164,7 +2147,7 @@ def _(vfs):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""## Conversion ES6 -> IIFE""")
     return
 
@@ -2174,7 +2157,6 @@ def _(
     ES6converter,
     cookiecutters_js,
     geometry_js,
-    perf_counter,
     turtle_graphics_js,
     vfs,
     webgl_torus_html,
@@ -2198,7 +2180,7 @@ def _(
 
 
 @app.cell
-def _(mo):
+def _():
     write_index_file_btn=mo.ui.run_button(label='Write "index.html" to disk.')
     return
 
@@ -2225,7 +2207,7 @@ def _(iife_script, vfs, webgl_torus_html):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(
         r"""
     ## Interactive 3D Viewer
@@ -2236,13 +2218,13 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""### class TorusWidget""")
     return
 
 
 @app.cell
-def _(anywidget, iife_script, traitlets):
+def _(iife_script):
     class TorusWidget(anywidget.AnyWidget):
         _esm = r"""
         function render({ model, el:element }) {
@@ -2352,19 +2334,19 @@ def _(anywidget, iife_script, traitlets):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""### Test TorusWidget""")
     return
 
 
 @app.cell
-def _(mo, torus_widget, torus_widget2):
+def _(torus_widget, torus_widget2):
     mo.hstack([torus_widget, torus_widget2])
     return
 
 
 @app.cell
-def _(mo, torus_widget):
+def _(torus_widget):
     mo.ui.anywidget(torus_widget)
     return
 
@@ -2389,7 +2371,7 @@ def _(btn):
 
 
 @app.cell
-def _(mo, torus_widget):
+def _(torus_widget):
     def toggle_animation(_):
         torus_widget.animate = not torus_widget.animate
 
@@ -2398,19 +2380,19 @@ def _(mo, torus_widget):
 
 
 @app.cell
-def _(index_html, mo):
+def _(index_html):
     mo.iframe(index_html)
     return
 
 
 @app.cell
-def _(mo):
+def _():
     export_vfs_button=mo.ui.run_button(label='update vfs export')
     return (export_vfs_button,)
 
 
 @app.cell
-def _(base64, export_vfs_button, index_html, mo, vfs):
+def _(export_vfs_button, index_html, vfs):
     mo.stop(not export_vfs_button.value, export_vfs_button)
     (index_html)
     def download_data(filename,data):
@@ -2422,76 +2404,74 @@ def _(base64, export_vfs_button, index_html, mo, vfs):
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""## Python Tests""")
     return
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""### Segments2Complex""")
     return
 
 
-@app.cell
-def _(exp, inf, pi):
-    def Segments2Complex(Segs,p0=0.+0.j,scale=1.0,a0=0+1j,tol=0.05,offs=0,loops=1,return_start=False):
-      """
-      The parameter "tol defines the resolution. It is the maximum allowable
-      difference between circular arc segment, and the secant between the
-      calculated points on the arc. Smaller values for tol will result in
-      more points per segment.
-      """
-      a=a0
-      p=p0*scale
-      p-=1j*a*offs
-      L=0
-      if return_start:
-          yield p,a,L,-1 #assuming closed loop: start-point = end-point
-      loopcount=0
-      while (loops==None) or (loops==inf) or (loopcount<loops):
-          loopcount+=1
-          for X,(l,da,*_) in enumerate(Segs):
-            l=l*scale
-            if da!=0:
-              r=l/da
-              r+=offs
-              if r!=0:
-                l=r*da
-                dl=2*abs(2*r*tol)**0.5
-                n=max(int(abs(6*(da/(2*pi)))),int(l//dl)+1)
-              else:
-                n=1
-              dda=exp(1j*da/n)
-              dda2=dda**0.5
-              v=(2*r*dda2.imag)*dda2*a
-            else:
-              n=1
-              dda=1
-              v=l*a
-            for i in range(n):
-              L+=l/n
-              p+=v
-              v*=dda
-              a*=dda
-              yield p,a,L,X
-    return (Segments2Complex,)
+@app.function
+def Segments2Complex(Segs,p0=0.+0.j,scale=1.0,a0=0+1j,tol=0.05,offs=0,loops=1,return_start=False):
+  """
+  The parameter "tol defines the resolution. It is the maximum allowable
+  difference between circular arc segment, and the secant between the
+  calculated points on the arc. Smaller values for tol will result in
+  more points per segment.
+  """
+  a=a0
+  p=p0*scale
+  p-=1j*a*offs
+  L=0
+  if return_start:
+      yield p,a,L,-1 #assuming closed loop: start-point = end-point
+  loopcount=0
+  while (loops==None) or (loops==inf) or (loopcount<loops):
+      loopcount+=1
+      for X,(l,da,*_) in enumerate(Segs):
+        l=l*scale
+        if da!=0:
+          r=l/da
+          r+=offs
+          if r!=0:
+            l=r*da
+            dl=2*abs(2*r*tol)**0.5
+            n=max(int(abs(6*(da/(2*pi)))),int(l//dl)+1)
+          else:
+            n=1
+          dda=exp(1j*da/n)
+          dda2=dda**0.5
+          v=(2*r*dda2.imag)*dda2*a
+        else:
+          n=1
+          dda=1
+          v=l*a
+        for i in range(n):
+          L+=l/n
+          p+=v
+          v*=dda
+          a*=dda
+          yield p,a,L,X
 
 
 @app.cell
-def _(mo):
+def _():
     run_python_tests_btn=mo.ui.run_button(label='run Python tests')
     return (run_python_tests_btn,)
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _():
     mo.md(r"""### Run Python Tests""")
     return
 
 
 @app.cell
-def _(Segments2Complex, cookiecutters_json, mo, pi, run_python_tests_btn):
+def _(cookiecutters_json, run_python_tests_btn):
     mo.stop(not run_python_tests_btn.value, run_python_tests_btn)
 
     def _():
@@ -2530,13 +2510,13 @@ def _(Segments2Complex, cookiecutters_json, mo, pi, run_python_tests_btn):
 
 
 @app.cell
-def _(mo):
+def _():
     mo.md(r"""## Trackpad""")
     return
 
 
 @app.cell
-def _(mo):
+def _():
     mo.md(r"""### trackpad.js""")
     return
 
@@ -2675,7 +2655,7 @@ def _(vfs):
 
 
 @app.cell
-def _(mo):
+def _():
     mo.md(r"""### class TrackpadWidget""")
     return
 
@@ -2689,7 +2669,7 @@ def _(ES6converter, trackpad_js, vfs):
 
 
 @app.cell
-def _(anywidget, trackpad_iife_js, traitlets):
+def _(trackpad_iife_js):
     class TrackpadWidget(anywidget.AnyWidget):
         _esm = trackpad_iife_js+r"""
         function render({ model, el }) {
@@ -2728,7 +2708,7 @@ def _(anywidget, trackpad_iife_js, traitlets):
 
 
 @app.cell
-def _(anywidget, traitlets, vfs):
+def _(vfs):
     def _():
         iife_prefix = r"""
         (function(global) {
@@ -3007,13 +2987,8 @@ def _(vfs):
 
 
 @app.cell
-def _(mo):
-    mo.md(
-        r"""
-    # Appendix
-
-    """
-    )
+def _():
+    mo.md(r"""# Appendix""")
     return
 
 
