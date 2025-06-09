@@ -6,21 +6,13 @@ app = marimo.App()
 with app.setup:
     # Initialization code that runs before all other cell
     import marimo as mo
-    from time import perf_counter
     import os
     import io
     import sys
     import zipfile
     import base64
     from pathlib import PurePath
-    from IPython.display import Javascript, display
-    import ipywidgets as widgets
-    import anywidget
-    import traitlets
-    from cmath import inf,exp,pi
-    import re
-
-
+    from time import perf_counter
 
 
 @app.cell(hide_code=True)
@@ -54,6 +46,18 @@ def _():
     return
 
 
+@app.cell
+def _():
+    from IPython.display import Javascript, display
+    import ipywidgets as widgets
+    import anywidget
+    import traitlets
+    from cmath import inf,exp,pi
+    import re
+    xxx="test"
+    return anywidget, exp, inf, pi, traitlets
+
+
 @app.class_definition
 # Custom StringIO class to handle VFS updates
 class VFSStringIO(io.StringIO):
@@ -74,7 +78,7 @@ class VFSStringIO(io.StringIO):
 @app.class_definition
 # SimpleVFS class with support for 'r', 'w', and 'a' modes         
 class SimpleVFS(dict):
-    def __init__(self, mount_point='/', default_cwd='/', home_dir='/'):
+    def __init__(self,files=None, mount_point='/', default_cwd='/', home_dir='/'):
         """
         Initialize the SimpleVFS with a mount point, default working directory, and home directory.
 
@@ -83,7 +87,10 @@ class SimpleVFS(dict):
             default_cwd (str, optional): The default current working directory (default: mount_point + '/').
             home_dir (str, optional): The virtual home directory for '~/...' paths (default: mount_point + '/home').
         """
-        super().__init__()
+        if files==None:
+          super().__init__()
+        else:
+          super().__init__(files)
         self.mount_point = PurePath(mount_point).as_posix()
         # Default default_cwd to mount_poin if not provided
         self.default_cwd = PurePath(default_cwd if default_cwd is not None else PurePath(self.mount_point)).as_posix()
@@ -2224,7 +2231,7 @@ def _():
 
 
 @app.cell
-def _(iife_script):
+def _(anywidget, iife_script, traitlets):
     class TorusWidget(anywidget.AnyWidget):
         _esm = r"""
         function render({ model, el:element }) {
@@ -2415,47 +2422,49 @@ def _():
     return
 
 
-@app.function
-def Segments2Complex(Segs,p0=0.+0.j,scale=1.0,a0=0+1j,tol=0.05,offs=0,loops=1,return_start=False):
-  """
-  The parameter "tol defines the resolution. It is the maximum allowable
-  difference between circular arc segment, and the secant between the
-  calculated points on the arc. Smaller values for tol will result in
-  more points per segment.
-  """
-  a=a0
-  p=p0*scale
-  p-=1j*a*offs
-  L=0
-  if return_start:
-      yield p,a,L,-1 #assuming closed loop: start-point = end-point
-  loopcount=0
-  while (loops==None) or (loops==inf) or (loopcount<loops):
-      loopcount+=1
-      for X,(l,da,*_) in enumerate(Segs):
-        l=l*scale
-        if da!=0:
-          r=l/da
-          r+=offs
-          if r!=0:
-            l=r*da
-            dl=2*abs(2*r*tol)**0.5
-            n=max(int(abs(6*(da/(2*pi)))),int(l//dl)+1)
-          else:
-            n=1
-          dda=exp(1j*da/n)
-          dda2=dda**0.5
-          v=(2*r*dda2.imag)*dda2*a
-        else:
-          n=1
-          dda=1
-          v=l*a
-        for i in range(n):
-          L+=l/n
-          p+=v
-          v*=dda
-          a*=dda
-          yield p,a,L,X
+@app.cell
+def _(exp, inf, pi):
+    def Segments2Complex(Segs,p0=0.+0.j,scale=1.0,a0=0+1j,tol=0.05,offs=0,loops=1,return_start=False):
+      """
+      The parameter "tol defines the resolution. It is the maximum allowable
+      difference between circular arc segment, and the secant between the
+      calculated points on the arc. Smaller values for tol will result in
+      more points per segment.
+      """
+      a=a0
+      p=p0*scale
+      p-=1j*a*offs
+      L=0
+      if return_start:
+          yield p,a,L,-1 #assuming closed loop: start-point = end-point
+      loopcount=0
+      while (loops==None) or (loops==inf) or (loopcount<loops):
+          loopcount+=1
+          for X,(l,da,*_) in enumerate(Segs):
+            l=l*scale
+            if da!=0:
+              r=l/da
+              r+=offs
+              if r!=0:
+                l=r*da
+                dl=2*abs(2*r*tol)**0.5
+                n=max(int(abs(6*(da/(2*pi)))),int(l//dl)+1)
+              else:
+                n=1
+              dda=exp(1j*da/n)
+              dda2=dda**0.5
+              v=(2*r*dda2.imag)*dda2*a
+            else:
+              n=1
+              dda=1
+              v=l*a
+            for i in range(n):
+              L+=l/n
+              p+=v
+              v*=dda
+              a*=dda
+              yield p,a,L,X
+    return (Segments2Complex,)
 
 
 @app.cell
@@ -2471,7 +2480,7 @@ def _():
 
 
 @app.cell
-def _(cookiecutters_json, run_python_tests_btn):
+def _(Segments2Complex, cookiecutters_json, pi, run_python_tests_btn):
     mo.stop(not run_python_tests_btn.value, run_python_tests_btn)
 
     def _():
@@ -2669,7 +2678,7 @@ def _(ES6converter, trackpad_js, vfs):
 
 
 @app.cell
-def _(trackpad_iife_js):
+def _(anywidget, trackpad_iife_js, traitlets):
     class TrackpadWidget(anywidget.AnyWidget):
         _esm = trackpad_iife_js+r"""
         function render({ model, el }) {
@@ -2708,7 +2717,7 @@ def _(trackpad_iife_js):
 
 
 @app.cell
-def _(vfs):
+def _(anywidget, traitlets, vfs):
     def _():
         iife_prefix = r"""
         (function(global) {
@@ -2989,6 +2998,16 @@ def _(vfs):
 @app.cell
 def _():
     mo.md(r"""# Appendix""")
+    return
+
+
+@app.function
+def fx(x): return eval(x)
+
+
+@app.cell
+def _():
+    fx("vfs['cookiecutters.js']")
     return
 
 
