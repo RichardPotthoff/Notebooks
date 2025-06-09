@@ -4,18 +4,6 @@ __generated_with = "0.13.10"
 app = marimo.App()
 
 
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(
-        r"""
-        [![Run Jupyter Notebooks](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/RichardPotthoff/Notebooks/main?filepath=anywidget/Counter.ipynb)   <- click here to open this file in MyBinder
-    
-        [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/RichardPotthoff/Notebooks/blob/main/anywidget/Counter.ipynb)   <- click here to open this file in Google Colab
-        """
-    )
-    return
-
-
 @app.cell
 def _():
     import anywidget
@@ -85,7 +73,7 @@ def _(observed):
 @app.cell
 def _():
     import marimo as mo
-    return (mo,)
+    return
 
 
 if __name__ == "__main__":
