@@ -1,7 +1,19 @@
 import marimo
 
-__generated_with = "0.13.10"
+__generated_with = "0.15.0"
 app = marimo.App()
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(
+        r"""
+        [![Run Jupyter Notebooks](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/RichardPotthoff/Notebooks/main?filepath=anywidget/Counter.ipynb)   <- click here to open this file in MyBinder
+    
+        [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/RichardPotthoff/Notebooks/blob/main/anywidget/Counter.ipynb)   <- click here to open this file in Google Colab
+        """
+    )
+    return
 
 
 @app.cell
@@ -72,8 +84,47 @@ def _(observed):
 
 @app.cell
 def _():
-    import marimo as mo
+    import os
+    os.environ
+    return (os,)
+
+
+@app.cell
+def _(os):
+    import sys
+    os.chdir('/var/mobile/Containers/Data/Application/3BA2F405-1E4D-41D1-8E03-EDDAA7B8A555/Documents/.jupyter')
+    os.listdir()
     return
+
+
+@app.cell
+def _(os):
+    os.listdir('serverconfig')
+    return
+
+
+@app.cell
+def _():
+    s=open('serverconfig/jupyterlabapputilsextensionannouncements.json').read()
+    return (s,)
+
+
+@app.cell
+def _(s):
+    s
+    return
+
+
+@app.cell
+def _(os):
+    os.listdir()
+    return
+
+
+@app.cell
+def _():
+    import marimo as mo
+    return (mo,)
 
 
 if __name__ == "__main__":
