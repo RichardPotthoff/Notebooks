@@ -283,11 +283,5 @@ def _(md1, md2):
     return
 
 
-@app.cell
-def _():
-    #T_input.si_value=40
-    return
-
-
 if __name__ == "__main__":
     app.run()
