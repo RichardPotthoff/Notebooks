@@ -42,12 +42,9 @@ r"""
 rf"""
         let format_spec = '{format_spec}' || '.2f';
         let unit_conversions = {conversions_json};
-        let current_unit = el.unit ?? ('{default_unit}' || Object.keys(unit_conversions)[0]);""" 
+        let current_unit ='{default_unit}' || Object.keys(unit_conversions)[0];""" 
 r"""
         let current_si = model.get('si_value') || 0;
-        if(el.unit===undefined){
-        el.unit=current_unit;
-        }
         let editable = model.get('editable') ?? true;
         // Global array to track all selects for cross-instance sync
         if (typeof window.siUnitSelects === 'undefined') {
@@ -103,9 +100,9 @@ r"""
         // Unit change listener (triggers reconversion and syncs all selects)
         select.addEventListener('change', (e) => {
               const new_unit = e.target.value;
-              if(new_unit!=current_unit){
+//              alert("el.parentElement.parentElement.outerHTML= \n"+ el.parentElement.parentElement.outerHTML+ "\nel.parentElement.parentElement.parentElement=\n"+el.parentElement.parentElement.parentElement)
+            if(new_unit!=current_unit){
                   current_unit=new_unit;
-                  el.unit=current_unit;
                   input.value = formatValue(format_spec, fromSI(current_si, current_unit, unit_conversions));
               };
         });
@@ -218,31 +215,39 @@ def _():
 
 @app.cell
 def _():
-    edit_checkbox=mo.ui.checkbox(value=True,label="Check to edit value") 
-    return (edit_checkbox,)
+    pre_defined_temperatures=mo.ui.dropdown(
+        options={
+            "5.18 °C":273.15+5.18,
+            "60.0 °F":273.15+(60-32)*5/9,
+            "300.0 K":300,
+            },
+        value=None,
+        label="pre-defined values",
+        allow_select_none=True)
+    return (pre_defined_temperatures,)
 
 
 @app.cell
-def _(edit_checkbox):
+def _(pre_defined_temperatures):
     T_input = SIUnitInput(
         unit_conversions={"K": 1.0, "°C": [1.0, 273.15], "°F": [5/9, 273.15 - 32 * 5/9]},
         default_unit="°C",
-        si_value=273.15+5.18, 
-        editable=edit_checkbox.value,  
+        si_value=pre_defined_temperatures.value or 273.15, 
+        editable=pre_defined_temperatures.value==None,  
         format_spec = '.2f'
     )
-    count1=[]
-    count2=[]
+    from itertools import count
+    count1=count(1)
+    count2=count(1)
     return T_input, count1, count2
 
 
 @app.cell
-def _(T_input, count1, edit_checkbox):
-    count1.append(None)
-    print(f"cell2 run count: {len(count1)}")
+def _(T_input, count1, pre_defined_temperatures):
+    print(f"cell2 run count= {next(count1)}")
     md1=mo.md(f"""
-    ## Input widget with unit conversion:
-    {edit_checkbox}
+    ## Input Widget with Unit Conversion:
+    {pre_defined_temperatures} <-- select <span style="border: 1px solid #999; padding: 0px 10px;margin-right: 05px "> -- </span> for manual input
 
     T= {T_input:0.2f+273.15[°C]} = {T_input:0.2f/1.8+255.372[°F]} = {T_input:0.2f[K]} <-- select different units for each widget instance
 
@@ -252,19 +257,16 @@ def _(T_input, count1, edit_checkbox):
 
 
 @app.cell
-def _(T_input, count2, edit_checkbox, σ_SB):
-    count2.append(None)
-    print(rf"cell1 run count: {len(count2)}")
+def _(T_input, count2, σ_SB):
+    print(rf"cell1 run count= {next(count2)}")
     md2=mo.md(rf"""
     <p></p>
     ## Black Body Radiation Example:
-    {edit_checkbox}
-
-    T={T_input} SI value: {T_input.si_value:0.2f}K
+    T={T_input:0.2f} SI value: {T_input.si_value:0.2f}K
 
     $$
      q_\mathrm{{BB}}=\sigma_{{SB}}\cdot T^4 
-    ={σ_SB*1e8:0.4f}\times 10^{{-8}}\mathrm{{\frac{{W}}{{m^2\cdot K^4}}}}\cdot({T_input.si_value:0.2f}\mathrm K)^4
+    ={σ_SB*1e8:0.4f}\times 10^{{-8}}\mathrm{{\frac{{W}}{{m^2\cdot K^4}}}}\cdot({T_input.si_value:0.2f}\,\mathrm K)^4
     ={σ_SB*T_input.si_value**4:.2f}\mathrm{{\frac{{W}}{{m^2 }}}}
      $$
     """
@@ -278,6 +280,12 @@ def _(md1, md2):
     print(md1.text)
     print()
     print(md2.text)
+    return
+
+
+@app.cell
+def _():
+    #T_input.si_value=40
     return
 
 
