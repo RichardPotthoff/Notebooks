@@ -4,4 +4,5 @@ exclude:
   - 3Dpreview/VirtualFS.md
   - beta_testing.Rmd
   - beta_testing.md
+  - 3Dpreview/simpleVFS.md
   
