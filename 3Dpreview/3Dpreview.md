@@ -10,6 +10,7 @@ kernelspec:
   display_name: Python 3 (ipykernel)
   language: python
   name: python3
+render_with_liquid: false 
 ---
 
 [![Run Jupyter Notebooks](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/RichardPotthoff/Notebooks/main?filepath=3Dpreview/3Dpreview.ipynb)
@@ -1435,6 +1436,10 @@ export function initialize({valxy_widget_id}) {
     valxyManager.setState(newValxy);
   });
   observer.observe(valxyWidget, { attributes: true, attributeFilter: ['value'] });
+  setTimeout(() => {
+  alert("Manually setting value attribute...");
+  valxyWidget.setAttribute("value", '{x:10, y:20}');
+}, 2000);
 
     // Poll for Python → JavaScript updates
     setInterval(() => {

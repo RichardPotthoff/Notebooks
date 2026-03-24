@@ -11,6 +11,7 @@ jupyter:
     display_name: Python 3 (ipykernel)
     language: python
     name: python3
+render_with_liquid: false 
 ---
 
 # Implementation of a virtual file system 
