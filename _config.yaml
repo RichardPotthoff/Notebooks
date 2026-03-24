@@ -3,4 +3,5 @@ exclude:
   - Trackpad/Trackpad.md
   - 3Dpreview/VirtualFS.md
   - beta_testing.Rmd
+  - beta_testing.md
   
